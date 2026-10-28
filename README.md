@@ -21,7 +21,7 @@ npm run db:seed             # migraciones + datos inventados (nunca en producci�
 npm run dev                 # API en http://127.0.0.1:3000
 ```
 
-Las migraciones viven en `db/migrations/` (se están moviendo desde `backend/db/` del repo del portal, tarea B0.2). Mientras tanto se puede apuntar a ellas con `MIGRATIONS_DIR` y `SEED_FILE`.
+Las migraciones viven en `db/migrations/` (se están moviendo desde `backend/db/` del repo del portal, tarea B0.2). Mientras tanto se puede apuntar a ellas con `MIGRATIONS_DIR` y `SEED_FILES` (lista en orden, separada por comas).
 
 ## Comandos
 

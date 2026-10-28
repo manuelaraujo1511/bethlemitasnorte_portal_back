@@ -1,5 +1,6 @@
 // Aplica las migraciones SQL pendientes y, con --seed, los datos de desarrollo.
 // Uso: npm run db:migrate | npm run db:seed
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createConnection } from 'mysql2/promise';
 import { loadConfig } from '../src/config.js';
@@ -8,7 +9,12 @@ import { appliedVersions, listMigrations, runSqlFile } from './sql-runner.js';
 const config = loadConfig();
 const seed = process.argv.includes('--seed');
 const migrationsDir = path.resolve(process.env.MIGRATIONS_DIR ?? 'db/migrations');
-const seedFile = path.resolve(process.env.SEED_FILE ?? 'db/seed_dev.sql');
+// Seeds en orden; cada uno depende de los anteriores.
+const seedFiles = (process.env.SEED_FILES ?? 'db/seed_dev.sql,db/seed_dev_academic.sql')
+  .split(',')
+  .map((f) => f.trim())
+  .filter((f) => f.length > 0)
+  .map((f) => path.resolve(f));
 
 if (seed && config.NODE_ENV === 'production') {
   console.error('El seed de desarrollo no se aplica en producción.');
@@ -44,8 +50,14 @@ try {
     console.log(`+ ${m.version}`);
   }
   if (seed) {
-    await runSqlFile(conn, seedFile);
-    console.log(`+ seed ${path.basename(seedFile)}`);
+    for (const file of seedFiles) {
+      if (!existsSync(file)) {
+        console.log(`- seed ${path.basename(file)} (no existe, se omite)`);
+        continue;
+      }
+      await runSqlFile(conn, file);
+      console.log(`+ seed ${path.basename(file)}`);
+    }
   }
 } catch (err) {
   console.error('Falló la migración:', err instanceof Error ? err.message : err);
