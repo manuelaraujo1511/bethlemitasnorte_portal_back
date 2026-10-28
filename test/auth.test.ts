@@ -8,6 +8,9 @@ import { memoryAuthStore, type MemoryUser } from './support/memory-auth-store.js
 const HOST = 'demo.campus.localhost';
 const PASSWORD = 'una frase larga de prueba';
 const school = { id: 1, publicId: '00000000-0000-4000-8000-000000000001', code: 'demo', name: 'Colegio Demo', timezone: 'America/Bogota', host: HOST };
+const OTHER_HOST = 'otro.campus.localhost';
+const ADMIN_HOST = 'admin.campus.localhost';
+const otherSchool = { id: 2, publicId: '00000000-0000-4000-8000-000000000002', code: 'otro', name: 'Otro Colegio', timezone: 'America/Bogota', host: OTHER_HOST };
 const IDLE = 30 * 60_000;
 const MAX = 12 * 3_600_000;
 
@@ -37,18 +40,18 @@ function student(over: Partial<MemoryUser> = {}): MemoryUser {
 
 function setup(users: MemoryUser[] = [student()], apiModules: FastifyPluginAsync[] = []) {
   const clock = { t: new Date('2026-10-28T15:00:00.000Z') };
-  const mem = memoryAuthStore(school, users);
+  const mem = memoryAuthStore([school, otherSchool], users);
   const app = buildApp({
     config: { LOG_LEVEL: 'silent' },
     checkDb: async () => {},
-    auth: { store: mem.store, secret: 'x'.repeat(40), idleMs: IDLE, maxMs: MAX, now: () => clock.t },
+    auth: { store: mem.store, secret: 'x'.repeat(40), idleMs: IDLE, maxMs: MAX, adminHost: ADMIN_HOST, now: () => clock.t },
     apiModules,
   });
   return { app, clock, ...mem };
 }
 
 /** Navegador mínimo: guarda cookies y manda el token CSRF como lo haría el front. */
-function browser(app: ReturnType<typeof setup>['app']) {
+function browser(app: ReturnType<typeof setup>['app'], host = HOST) {
   const jar = new Map<string, string>();
   const keep = (res: LightMyRequestResponse) => {
     for (const c of res.cookies as { name: string; value: string; maxAge?: number; expires?: Date }[]) {
@@ -61,10 +64,10 @@ function browser(app: ReturnType<typeof setup>['app']) {
   return {
     jar,
     async get(url: string) {
-      return keep(await app.inject({ method: 'GET', url, headers: { host: HOST, cookie: cookieHeader() } }));
+      return keep(await app.inject({ method: 'GET', url, headers: { host, cookie: cookieHeader() } }));
     },
     async post(url: string, payload?: object, csrf: string | null = jar.get(CSRF_COOKIE) ?? null) {
-      const headers: Record<string, string> = { host: HOST, cookie: cookieHeader() };
+      const headers: Record<string, string> = { host, cookie: cookieHeader() };
       if (csrf !== null) headers['x-csrf-token'] = csrf;
       return keep(await app.inject({ method: 'POST', url, headers, ...(payload ? { payload } : {}) }));
     },
@@ -153,15 +156,24 @@ describe('POST /auth/login', () => {
     }
   });
 
-  it('en un host que no es de ningún colegio no entra', async () => {
+  it('un host que no es de ningún colegio ni del panel no tiene API', async () => {
     const { app } = setup();
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      headers: { host: 'otro.ejemplo.test', cookie: `${CSRF_COOKIE}=${'b'.repeat(43)}`, 'x-csrf-token': 'b'.repeat(43) },
-      payload: { username: '900001', password: PASSWORD },
-    });
+    for (const [method, url] of [['POST', '/api/v1/auth/login'], ['GET', '/api/v1/auth/csrf'], ['GET', '/api/v1/me']] as const) {
+      const res = await app.inject({
+        method,
+        url,
+        headers: { host: 'cualquier.cosa', cookie: `${CSRF_COOKIE}=${'b'.repeat(43)}`, 'x-csrf-token': 'b'.repeat(43) },
+        ...(method === 'POST' ? { payload: { username: '900001', password: PASSWORD } } : {}),
+      });
+      expect(res.statusCode, url).toBe(404);
+      expect(res.json().code).toBe('not_found');
+    }
+  });
+
+  it('en el colegio de otro no entra', async () => {
+    const res = await browser(setup().app, OTHER_HOST).login();
     expect(res.statusCode).toBe(401);
+    expect(res.json().code).toBe('invalid_credentials');
   });
 
   it('rechaza campos de más', async () => {
@@ -287,5 +299,65 @@ describe('mustChangePassword', () => {
     const b = browser(setup([student()], [probe]).app);
     await b.login();
     expect((await b.get('/api/v1/notas')).json()).toEqual({ ok: true });
+  });
+});
+
+describe('host del colegio y de la plataforma', () => {
+  const admin = (): MemoryUser => ({
+    id: 1,
+    username: 'soporte.plataforma',
+    passwordHash: hash,
+    schoolId: null,
+    me: {
+      id: '00000000-0000-4000-8000-000000000001',
+      username: 'soporte.plataforma',
+      displayName: 'Soporte Plataforma',
+      firstName: 'Soporte',
+      lastName: 'Plataforma',
+      email: null,
+      roles: [{ role: 'platform_admin', coordinatorType: null }],
+    },
+  });
+
+  it('platform_admin entra solo por el host de administración', async () => {
+    const { app } = setup([student(), admin()]);
+    const res = await browser(app, ADMIN_HOST).login('soporte.plataforma');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().school).toBeNull();
+    for (const host of [HOST, OTHER_HOST]) {
+      expect((await browser(app, host).login('soporte.plataforma')).statusCode, host).toBe(401);
+    }
+  });
+
+  it('en el host de administración no entran usuarios de un colegio', async () => {
+    const res = await browser(setup().app, ADMIN_HOST).login();
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('sin PLATFORM_ADMIN_HOST no hay host de administración', async () => {
+    const mem = memoryAuthStore([school], [admin()]);
+    const app = buildApp({
+      config: { LOG_LEVEL: 'silent' },
+      checkDb: async () => {},
+      auth: { store: mem.store, secret: 'x'.repeat(40), idleMs: IDLE, maxMs: MAX },
+    });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/auth/csrf', headers: { host: ADMIN_HOST } })).statusCode).toBe(404);
+  });
+
+  it('la sesión no vale en el host de otro colegio', async () => {
+    const { app, sessions } = setup();
+    const a = browser(app);
+    await a.login();
+    expect(sessions[0]!.schoolId).toBe(school.id);
+    const b = browser(app, OTHER_HOST);
+    for (const [k, v] of a.jar) b.jar.set(k, v);
+    const res = await b.get('/api/v1/me');
+    expect(res.statusCode).toBe(401);
+    expect(res.json().code).toBe('unauthenticated');
+    // Desde el otro colegio tampoco puede actuar sobre ella (ni revocarla).
+    await b.post('/api/v1/auth/logout');
+    expect(sessions[0]!.revokedAt).toBeNull();
+    // En su colegio sigue funcionando.
+    expect((await a.get('/api/v1/me')).statusCode).toBe(200);
   });
 });

@@ -60,6 +60,7 @@ export interface StudentsTable {
 export interface AuthSessionsTable {
   id: Generated<number>;
   user_id: number;
+  school_id: number | null;
   token_hash: Buffer;
   created_at: Generated<Date>;
   last_used_at: Date | null;

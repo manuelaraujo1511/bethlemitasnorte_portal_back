@@ -32,6 +32,9 @@ info:
       recursos que la persona sí puede ver.
     - **Colegio:** se resuelve por el host de la petición (`school_domains`). El
       estudiante solo escribe su código; nunca se envía el colegio en el cuerpo.
+      El host de administración de la plataforma (`PLATFORM_ADMIN_HOST`) no tiene
+      colegio y es el único donde entra `platform_admin`. Cualquier otro host
+      responde `404 not_found` en todas las rutas de `/api/v1`.
 
     ## Sesión y CSRF
 
@@ -44,8 +47,11 @@ info:
       cabecera, o si no coincide, la respuesta es `403` con `code: csrf_invalid`.
     - Tras iniciar sesión, cambiar la contraseña o restablecerla, el servidor emite
       una sesión y un token CSRF nuevos (rotación).
-    - La expiración por inactividad y la vida máxima de la sesión se fijan en B1.2.
-      Una sesión vencida responde `401` con `code: session_expired`.
+    - La sesión vence por inactividad (`SESSION_IDLE_MINUTES`, 30 por defecto) y
+      por vida máxima (`SESSION_MAX_HOURS`, 12). Una sesión vencida responde `401`
+      con `code: session_expired`.
+    - La sesión queda atada al colegio (o al host de administración) donde se
+      inició; usada desde otro host no vale (`401 unauthenticated`).
     - Si `mustChangePassword` es `true`, cualquier ruta distinta de `GET /me`,
       `POST /auth/password/change` y `POST /auth/logout` responde `403` con
       `code: password_change_required`.
@@ -231,8 +237,8 @@ paths:
       operationId: getMe
       summary: La persona que inició sesión, su colegio y sus roles
       description: |
-        Los roles son los activos en el colegio del host, más `platform_admin` si
-        lo tiene. Los datos del perfil de estudiante (grupo, materias, docentes)
+        Los roles son los activos en el colegio del host; en el host de
+        administración, solo `platform_admin`. Los datos del perfil de estudiante (grupo, materias, docentes)
         llegan en B2.1 con sus propias rutas.
       responses:
         '200':

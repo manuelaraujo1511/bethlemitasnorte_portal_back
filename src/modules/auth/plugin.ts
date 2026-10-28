@@ -19,6 +19,8 @@ export interface AuthOptions {
   secret: string;
   idleMs: number;
   maxMs: number;
+  /** Host del panel de la plataforma (school = null); solo ahí entra platform_admin. */
+  adminHost?: string | undefined;
   now?: () => Date;
 }
 
@@ -84,7 +86,7 @@ const invalidCredentials = () => new AppError(401, 'invalid_credentials', 'Usuar
  * encapsular (fastify-plugin), así sus hooks cubren también los módulos hermanos.
  */
 const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
-  const { store, secret, idleMs, maxMs } = opts;
+  const { store, secret, idleMs, maxMs, adminHost } = opts;
   const now = opts.now ?? (() => new Date());
 
   await app.register(cookie);
@@ -107,13 +109,24 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
   });
 
   app.addHook('onRequest', async (request, reply) => {
-    request.school = await store.schoolByHost(request.hostname.toLowerCase());
+    // El Host decide el colegio (school_domains) o el panel de la plataforma; cualquier
+    // otro host no tiene API. request.hostname sale del Host del cliente (sin trustProxy).
+    const host = request.hostname.toLowerCase();
+    if (adminHost === undefined || host !== adminHost) {
+      request.school = await store.schoolByHost(host);
+      if (!request.school) throw new AppError(404, 'not_found', 'No existe');
+    }
+    const schoolId = request.school?.id ?? null;
 
     const token = request.cookies[SESSION_COOKIE];
     if (token) {
-      const record = await store.findSession(sha256(token));
+      const found = await store.findSession(sha256(token));
+      // Una sesión solo vale en el colegio (o el panel) donde se inició.
+      const record = found && found.schoolId === schoolId ? found : null;
       const t = now().getTime();
-      if (record) {
+      if (found && !record) {
+        request.log.warn({ sessionId: found.id }, 'sesión usada desde otro colegio');
+      } else if (record) {
         const idleSince = (record.lastUsedAt ?? record.createdAt).getTime();
         if (t >= record.expiresAt.getTime() || t - idleSince >= idleMs) {
           await store.revokeSession(record.id, now());
@@ -189,6 +202,7 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
       const tokenHash = sha256(token);
       await store.createSession({
         userId: candidate.userId,
+        schoolId,
         tokenHash,
         expiresAt: new Date(t.getTime() + maxMs),
         userAgent: request.headers['user-agent'] ?? null,

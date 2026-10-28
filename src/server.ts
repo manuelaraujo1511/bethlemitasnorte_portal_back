@@ -13,6 +13,7 @@ const app = buildApp({
     secret: config.SESSION_SECRET,
     idleMs: config.SESSION_IDLE_MINUTES * 60_000,
     maxMs: config.SESSION_MAX_HOURS * 3_600_000,
+    adminHost: config.PLATFORM_ADMIN_HOST,
   },
 });
 

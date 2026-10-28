@@ -12,6 +12,7 @@ Desde la tarea B0.2 (2026-10-28) este directorio es la única fuente de las migr
 | `migrations/0002_academic_extras.sql` | 2 | Notas y Definitivo, asistencia, observador, autoevaluación, correo, PQRSF, avisos, documentos, salud, consentimientos |
 | `migrations/0003_grading_codocencia.sql` | 2b | Dominio por colegio, co-docencia (titular y reemplazo), escala 10 a 50, categorías y actividades de calificación, autoevaluación con valor por defecto 36, descriptores y pesos 30/40/30 |
 | `migrations/0004_grading_views.sql` | 2b | Vistas de cálculo: `v_category_scores`, `v_period_scores` y `v_definitive_scores` (misma regla que `campus/packages/core/src/logic/grading.ts`) |
+| `migrations/0005_session_school.sql` | 1 | `auth_sessions.school_id`: la sesión queda atada al colegio donde se inició (NULL = host de administración); revoca las sesiones abiertas antes |
 | `seed_dev.sql` | solo dev | Datos inventados que reflejan el mock; requiere solo `0001` |
 | `seed_dev_academic.sql` | solo dev | Calificación del ejemplo del dueño (46 y 48), autoevaluación, notas de período, asistencia, observador, co-docencia, correo, PQRS y avisos; requiere `0001`–`0004` y `seed_dev.sql` |
 | `seed_dev_school.sql` | solo dev | B1.1: dominios del colegio (`localhost`, `demo.campus.localhost`), 39 estudiantes más (3.º B con 30 y 3.º A con 10) y las 8 asignaciones de 3.º A; requiere los dos seeds anteriores |
@@ -40,6 +41,7 @@ mysql -h HOST -u USUARIO campus < db/migrations/0001_core.sql
 mysql -h HOST -u USUARIO campus < db/migrations/0002_academic_extras.sql
 mysql -h HOST -u USUARIO campus < db/migrations/0003_grading_codocencia.sql
 mysql -h HOST -u USUARIO campus < db/migrations/0004_grading_views.sql
+mysql -h HOST -u USUARIO campus < db/migrations/0005_session_school.sql
 # Solo desarrollo, base local y descartable:
 mysql -h HOST -u USUARIO campus < db/seed_dev.sql
 mysql -h HOST -u USUARIO campus < db/seed_dev_academic.sql

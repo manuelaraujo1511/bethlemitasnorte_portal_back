@@ -55,6 +55,8 @@ Todos los errores ya salen como `application/problem+json` (`src/http/problem.ts
 
 Login (B1.2): el colegio sale del `Host` (`school_domains`); la contraseña se verifica con argon2id y, si el usuario no existe, contra un hash ficticio, para que el tiempo de respuesta no delate qué usuarios existen. La sesión es un token aleatorio en `__Host-campus_session` (HttpOnly, Secure, SameSite=Lax) y en la base solo queda su SHA-256. Vence por inactividad (`SESSION_IDLE_MINUTES`) y por vida máxima (`SESSION_MAX_HOURS`). Con sesión, el token CSRF es un HMAC del hash de la sesión con `SESSION_SECRET`, así que un CSRF de otra sesión no sirve. Si el usuario debe cambiar la contraseña, todo responde `403 password_change_required` menos `/me`, `/auth/csrf`, `/auth/logout` y `/auth/password/change`. Para probar en local, pide con `Host: demo.campus.localhost` (o `localhost`).
 
+Hosts: el colegio sale del `Host` y la sesión queda atada al colegio donde se inició (`auth_sessions.school_id`). `platform_admin` solo entra por `PLATFORM_ADMIN_HOST`, y un host que no es de ningún colegio ni del panel responde `404` en `/api/v1`. La API no usa `trustProxy`: en producción el proxy debe reenviar el `Host` original del navegador (no reescribirlo ni depender de `X-Forwarded-Host`); queda anotado para el despliegue (B7.x).
+
 ## Estructura
 
 ```
