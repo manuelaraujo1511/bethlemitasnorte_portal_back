@@ -13,8 +13,10 @@ export type ObservationKind = 'reconocimiento' | 'convivencia' | 'academica';
 
 export type Resource =
   | { type: 'school'; schoolId: number }
-  /** Cuenta de usuario; `role` es el rol de la cuenta (el admin de plataforma solo maneja school_admin). */
+  /** Cuenta de usuario completa; `role` es el rol de la cuenta (el admin de plataforma solo maneja school_admin). */
   | { type: 'user'; schoolId: number; role: Role }
+  /** Nombre, foto y rol de una persona del colegio, para directorio y correo. */
+  | { type: 'user_contact'; schoolId: number }
   | { type: 'enrollment'; schoolId: number; studentId: number; classGroupId: number }
   | { type: 'staff'; schoolId: number }
   /** Años, períodos, grados, grupos, materias y plan de estudios. */
@@ -28,8 +30,13 @@ export type Resource =
   | { type: 'attendance'; schoolId: number; classGroupId: number; studentId: number }
   | { type: 'observation'; schoolId: number; kind: ObservationKind; studentId: number; classGroupId: number }
   | { type: 'self_assessment'; schoolId: number; assignmentId: number; studentId: number; windowOpen: boolean }
-  /** Un mensaje: lo leen sus participantes. Quién puede escribirle a quién lo valida el módulo de correo. */
+  /** Un mensaje existente: solo sus participantes lo leen y responden en él. */
   | { type: 'message'; schoolId: number; participantUserIds: readonly number[] }
+  /**
+   * Un mensaje nuevo. Hoy cualquiera del colegio puede escribir; la regla de quién
+   * le escribe a quién (pregunta 5 de database-design.md) se agrega aquí cuando se decida.
+   */
+  | { type: 'new_message'; schoolId: number; recipientUserIds: readonly number[] }
   | { type: 'pqrs'; schoolId: number; createdByUserId: number; assignedToUserId: number | null }
   /** Aviso o documento. Audiencia vacía = todo el colegio. */
   | { type: 'notice'; schoolId: number; audienceGroupIds: readonly number[] }
@@ -78,13 +85,28 @@ function allowed(actor: Actor, r: Resource): Crud {
   // Todo lo demás es de un colegio: el del host, nunca otro.
   if (actor.schoolId === null || r.schoolId !== actor.schoolId) return NONE;
 
+  // Un estudiante sin matrícula activa (y sin otro rol) no ve nada del colegio.
+  if (roles.size === 1 && roles.has('student') && !actor.enrollment) return NONE;
+
+  // Correo y contactos: igual para todos los roles del colegio.
+  if (r.type === 'message') return r.participantUserIds.includes(actor.userId) ? CR : NONE;
+  if (r.type === 'new_message') return r.recipientUserIds.length > 0 ? set('create') : NONE;
+  if (r.type === 'user_contact') return R;
+
   // Una persona puede acumular roles: vale la unión.
+  return byRoles(actor, r);
+}
+
+type RoleResource = Exclude<Resource, { type: 'message' | 'new_message' | 'user_contact' }>;
+
+function byRoles(actor: Actor, r: RoleResource): Crud {
+  const { roles } = actor;
   const result = new Set<Action>();
   for (const role of roles) for (const a of byRole(actor, role, r)) result.add(a);
   return result;
 }
 
-function byRole(actor: Actor, role: Role, r: Resource): Crud {
+function byRole(actor: Actor, role: Role, r: RoleResource): Crud {
   switch (role) {
     case 'platform_admin':
       return NONE;
@@ -99,7 +121,7 @@ function byRole(actor: Actor, role: Role, r: Resource): Crud {
   }
 }
 
-function schoolAdmin(r: Resource): Crud {
+function schoolAdmin(r: RoleResource): Crud {
   switch (r.type) {
     case 'school':
       return R;
@@ -121,15 +143,13 @@ function schoolAdmin(r: Resource): Crud {
     case 'self_assessment':
     case 'audit':
       return R;
-    case 'message':
-      return CR;
     case 'pqrs':
     case 'sensitive':
       return RU;
   }
 }
 
-function coordinator(actor: Actor, r: Resource): Crud {
+function coordinator(actor: Actor, r: RoleResource): Crud {
   switch (r.type) {
     case 'school':
     case 'audit':
@@ -152,8 +172,6 @@ function coordinator(actor: Actor, r: Resource): Crud {
     }
     case 'self_assessment':
       return actor.coordinatorTypes.has('academica') ? R : NONE;
-    case 'message':
-      return CR;
     case 'pqrs':
       return RU;
     case 'sensitive':
@@ -161,15 +179,15 @@ function coordinator(actor: Actor, r: Resource): Crud {
   }
 }
 
-function teacher(actor: Actor, r: Resource): Crud {
+function teacher(actor: Actor, r: RoleResource): Crud {
   const groups = teacherGroupIds(actor);
   const assignment = (id: number) => actor.assignments.get(id);
   switch (r.type) {
     case 'school':
     case 'audit':
     case 'sensitive':
+    case 'user': // de otras personas solo ve el contacto (user_contact)
       return NONE;
-    case 'user': // básico: qué campos ve lo decide la ruta
     case 'staff':
     case 'academic_structure':
       return R;
@@ -193,8 +211,6 @@ function teacher(actor: Actor, r: Resource): Crud {
       return groups.has(r.classGroupId) ? CR : NONE;
     case 'self_assessment':
       return assignment(r.assignmentId) ? CR : NONE;
-    case 'message':
-      return r.participantUserIds.includes(actor.userId) ? CR : set('create');
     case 'pqrs':
       return r.assignedToUserId === actor.userId ? R : NONE;
     case 'notice':
@@ -203,7 +219,7 @@ function teacher(actor: Actor, r: Resource): Crud {
   }
 }
 
-function student(actor: Actor, r: Resource): Crud {
+function student(actor: Actor, r: RoleResource): Crud {
   const e = actor.enrollment;
   if (!e) return NONE; // sin matrícula activa no ve nada del colegio
   const own = 'studentId' in r && r.studentId === e.studentId;
@@ -211,8 +227,8 @@ function student(actor: Actor, r: Resource): Crud {
   switch (r.type) {
     case 'school':
     case 'audit':
+    case 'user': // de otras personas solo ve el contacto (user_contact)
       return NONE;
-    case 'user': // básico (contactos)
     case 'staff': // nombre y materia
     case 'academic_structure':
       return R;
@@ -233,8 +249,6 @@ function student(actor: Actor, r: Resource): Crud {
     case 'self_assessment':
       if (!own) return NONE;
       return r.windowOpen ? CRU : R;
-    case 'message':
-      return r.participantUserIds.includes(actor.userId) ? CR : set('create');
     case 'pqrs':
       if (r.createdByUserId !== actor.userId) return NONE;
       return CR;
