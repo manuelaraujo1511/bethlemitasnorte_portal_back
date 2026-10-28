@@ -26,7 +26,7 @@
     "@fastify/cookie": "^11.1.5",
     "@node-rs/argon2": "^2.2.2",
     "fastify": "^5.12.7",
-    "fastify-plugin": "^5.1.0",
+    "fastify-plugin": "^6.0.1",
     "kysely": "^0.29.7",
     "mysql2": "^3.24.6",
     "zod": "^4.6.7"
