@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  db:
+    # Migraciones desde cero contra MySQL real, dos veces (deben ser re-ejecutables),
+    # y la API respondiendo /health/ready contra esa base.
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: campus
+          MYSQL_USER: campus
+          MYSQL_PASSWORD: ci-only
+          MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_USER: campus
+      DB_PASSWORD: ci-only
+      DB_NAME: campus
+      LOG_LEVEL: warn
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run db:migrate
+      - name: Seed de desarrollo
+        if: hashFiles('db/seed_dev.sql') != ''
+        run: npm run db:seed
+      - name: /health/ready contra la base
+        run: |
+          npx tsx src/server.ts &
+          for i in $(seq 1 30); do curl -sf localhost:3000/health && break; sleep 1; done
+          curl -sf localhost:3000/health/ready
