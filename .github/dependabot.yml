@@ -1,0 +1,18 @@
+# S0.2: actualizaciones de dependencias (docs/seguridad del repo del portal).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      menores:
+        update-types: [minor, patch]
+    labels: [back, seguridad]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [seguridad]
