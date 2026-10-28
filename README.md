@@ -28,13 +28,20 @@ La base de datos vive en [`db/`](db/README.md): migraciones, seeds de desarrollo
 
 | Comando | Qué hace |
 |---|---|
-| `npm run check` | typecheck + lint + pruebas (lo que corre CI) |
+| `npm run check` | typecheck + lint + contrato + pruebas (lo que corre CI) |
+| `npm run api:lint` | Valida `openapi.yaml` (Redocly, reglas estrictas) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
 | `npm run build` | Compila a `dist/` |
 
-## Endpoints
+## Contrato de la API
+
+[`openapi.yaml`](openapi.yaml) es el contrato v1 (`/api/v1`). Un endpoint nuevo empieza como cambio en ese archivo; el front genera sus tipos desde ahí. Ahí están las convenciones: errores `application/problem+json` con `code` estable, paginación por cursor, fechas en UTC, sesión por cookie y CSRF de doble envío. Hoy define `/auth/*` y `/me`; las rutas se implementan en B1.2 y B2.1.
+
+Todos los errores ya salen como `application/problem+json` (`src/http/problem.ts`); un 5xx solo devuelve `requestId`.
+
+## Endpoints implementados
 
 | Ruta | Uso |
 |---|---|

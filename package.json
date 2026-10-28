@@ -18,7 +18,8 @@
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env scripts/migrate.ts --seed",
     "db:test": "bash db/tests/run.sh",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "api:lint": "redocly lint openapi.yaml",
+    "check": "npm run typecheck && npm run lint && npm run api:lint && npm test"
   },
   "dependencies": {
     "fastify": "^5.12.7",
@@ -28,11 +29,14 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@redocly/cli": "^2.72.0",
     "@types/node": "^22.20.5",
+    "ajv": "^8.20.0",
     "eslint": "^10.13.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.1",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1"
   }
 }

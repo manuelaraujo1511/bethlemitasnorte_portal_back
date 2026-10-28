@@ -1,0 +1,503 @@
+openapi: 3.1.0
+info:
+  title: API del portal Bethlemitas Norte
+  version: 1.0.0-draft
+  summary: Contrato v1. Fase 0, solo autenticación y la persona que inició sesión.
+  description: |
+    Contrato primero: un endpoint nuevo empieza como cambio en este archivo
+    (`docs/plan-desarrollo.md` del repo del portal, regla 5). El front genera sus
+    tipos desde aquí (F0.3).
+
+    ## Convenciones
+
+    - **Prefijo:** todas las rutas cuelgan de `/api/v1`. Un cambio incompatible
+      abre `/api/v2`; en v1 solo se agregan campos o rutas.
+    - **JSON:** campos en `camelCase`. Un campo sin valor va como `null`, no se omite.
+    - **Identificadores:** `id` es siempre el `public_id` (UUID) de la base. El id
+      numérico nunca sale del servidor.
+    - **Fechas:** ISO 8601 en UTC con `Z` (`2026-10-28T15:04:05.123Z`). Fechas de
+      calendario sin hora: `YYYY-MM-DD`. La conversión a `America/Bogota` la hace
+      el cliente al mostrar.
+    - **Errores:** `application/problem+json` (RFC 9457) con el esquema `Problem`.
+      `code` es estable y es lo que el cliente compara; `title` y `detail` son texto
+      para personas y pueden cambiar. Un 5xx nunca incluye detalles internos: solo
+      `requestId` para buscar en los logs.
+    - **Paginación:** por cursor. El cliente pide `?limit=` (1 a 100, por defecto 20)
+      y repite con `?cursor=` el `page.nextCursor` de la respuesta anterior hasta que
+      sea `null`. El cursor es opaco: no se interpreta ni se construye. Lo usarán los
+      listados de fases siguientes (esquema `PageInfo`, parámetros `Cursor` y `Limit`).
+    - **Colegio:** se resuelve por el host de la petición (`school_domains`). El
+      estudiante solo escribe su código; nunca se envía el colegio en el cuerpo.
+
+    ## Sesión y CSRF
+
+    - El navegador se autentica con la cookie `__Host-campus_session`
+      (`HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`). El token se guarda como
+      hash SHA-256 en `auth_sessions`; nunca en claro.
+    - Toda petición que no sea `GET`, `HEAD` u `OPTIONS` (login incluido) lleva la
+      cabecera `X-CSRF-Token` con el valor de la cookie `__Host-campus_csrf`
+      (patrón de doble envío). El cliente obtiene ambas con `GET /auth/csrf`. Sin
+      cabecera, o si no coincide, la respuesta es `403` con `code: csrf_invalid`.
+    - Tras iniciar sesión, cambiar la contraseña o restablecerla, el servidor emite
+      una sesión y un token CSRF nuevos (rotación).
+    - La expiración por inactividad y la vida máxima de la sesión se fijan en B1.2.
+      Una sesión vencida responde `401` con `code: session_expired`.
+    - Si `mustChangePassword` es `true`, cualquier ruta distinta de `GET /me`,
+      `POST /auth/password/change` y `POST /auth/logout` responde `403` con
+      `code: password_change_required`.
+    - La app móvil (B6.1) usará otro esquema de autenticación que se agregará aquí.
+servers:
+  - url: /api/v1
+tags:
+  - name: auth
+    description: Inicio y cierre de sesión, contraseña.
+  - name: me
+    description: La persona que inició sesión.
+security:
+  - session: []
+
+paths:
+  /auth/csrf:
+    get:
+      tags: [auth]
+      operationId: getCsrfToken
+      summary: Entrega un token CSRF
+      description: |
+        Fija la cookie `__Host-campus_csrf` y devuelve el mismo valor para enviarlo
+        en `X-CSRF-Token`. No requiere sesión. Se llama al cargar la app y tras un
+        `403 csrf_invalid`.
+      security: []
+      responses:
+        '200':
+          description: Token emitido.
+          headers:
+            Set-Cookie:
+              description: '`__Host-campus_csrf=<token>; Path=/; Secure; SameSite=Lax`'
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CsrfToken' }
+        '429': { $ref: '#/components/responses/TooManyAttempts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Inicia sesión
+      description: |
+        `username` es el código del estudiante o el usuario del personal en el
+        colegio del host. Las credenciales incorrectas, un usuario inexistente o
+        suspendido responden igual (`401 invalid_credentials`), para no revelar qué
+        cuentas existen. Tras varios intentos fallidos responde `429` (B1.4).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Sesión iniciada. Fija una cookie de sesión nueva y rota el token CSRF.
+          headers:
+            Set-Cookie:
+              description: '`__Host-campus_session` y un `__Host-campus_csrf` nuevo.'
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '403': { $ref: '#/components/responses/CsrfInvalid' }
+        '429': { $ref: '#/components/responses/TooManyAttempts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Cierra la sesión actual
+      description: Revoca la sesión en `auth_sessions` y borra las cookies. Es idempotente.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '204':
+          description: Sesión cerrada (o ya no existía).
+          headers:
+            Set-Cookie:
+              description: Borra `__Host-campus_session` y `__Host-campus_csrf`.
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/CsrfInvalid' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /auth/password/change:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      summary: Cambia la contraseña de la persona que inició sesión
+      description: |
+        Exige la contraseña actual. Revoca las demás sesiones de la persona y rota
+        la actual. Quita `mustChangePassword`.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204':
+          description: Contraseña cambiada.
+          headers:
+            Set-Cookie:
+              description: Sesión y token CSRF nuevos.
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/WeakPassword' }
+        '429': { $ref: '#/components/responses/TooManyAttempts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      operationId: requestPasswordReset
+      summary: Pide un enlace para restablecer la contraseña
+      description: |
+        Siempre responde `202`, exista o no la cuenta y tenga o no correo. Si la
+        cuenta tiene correo verificado, envía un enlace de un solo uso que vence en
+        30 minutos (B1.5). Las cuentas de menores sin correo se restablecen con el
+        colegio.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '202': { description: Solicitud recibida. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/CsrfInvalid' }
+        '429': { $ref: '#/components/responses/TooManyAttempts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      operationId: resetPassword
+      summary: Fija una contraseña nueva con el token del enlace
+      description: |
+        Marca el token como usado, revoca todas las sesiones de la persona y no
+        inicia sesión: la persona entra después con su contraseña nueva.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204': { description: Contraseña restablecida. }
+        '400':
+          description: |
+            Cuerpo inválido (`validation_failed`) o token vencido, usado o
+            inexistente (`reset_token_invalid`; los tres casos responden igual).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/CsrfInvalid' }
+        '422': { $ref: '#/components/responses/WeakPassword' }
+        '429': { $ref: '#/components/responses/TooManyAttempts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: La persona que inició sesión, su colegio y sus roles
+      description: |
+        Los roles son los activos en el colegio del host, más `platform_admin` si
+        lo tiene. Los datos del perfil de estudiante (grupo, materias, docentes)
+        llegan en B2.1 con sus propias rutas.
+      responses:
+        '200':
+          description: Persona actual.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        default: { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Host-campus_session
+      description: Cookie de sesión `HttpOnly`; el cliente web no la lee, el navegador la envía.
+
+  parameters:
+    CsrfHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Valor de la cookie `__Host-campus_csrf` (ver `GET /auth/csrf`).
+      schema: { type: string, minLength: 32, maxLength: 128 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: '`page.nextCursor` de la respuesta anterior. Opaco.'
+      schema: { type: string, maxLength: 512 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  headers:
+    RetryAfter:
+      description: Segundos que hay que esperar antes de reintentar.
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Error:
+      description: Error inesperado. En 5xx solo hay `requestId`, nunca detalles internos.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ValidationError:
+      description: El cuerpo o los parámetros no cumplen el esquema (`validation_failed`); `errors` dice qué campo.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InvalidCredentials:
+      description: Usuario o contraseña incorrectos (`invalid_credentials`). Mismo mensaje exista o no la cuenta.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: Sin sesión (`unauthenticated`) o sesión vencida (`session_expired`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CsrfInvalid:
+      description: Falta `X-CSRF-Token` o no coincide con la cookie (`csrf_invalid`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: '`csrf_invalid`, `password_change_required` o `forbidden`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    WeakPassword:
+      description: La contraseña nueva no cumple la política (`weak_password`); `errors` dice por qué.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyAttempts:
+      description: Demasiados intentos (`too_many_attempts`). No revela si la cuenta existe.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457. `code` es el campo que compara el cliente.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: '`about:blank` o una URI de documentación del error.'
+          examples: [about:blank]
+        title:
+          type: string
+          examples: [Usuario o contraseña incorrectos]
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        detail:
+          type: [string, 'null']
+        requestId:
+          type: string
+          description: Id de la petición, el mismo de los logs del servidor.
+        errors:
+          type: array
+          description: Solo en `validation_failed` y `weak_password`.
+          items: { $ref: '#/components/schemas/FieldError' }
+      additionalProperties: false
+
+    ErrorCode:
+      type: string
+      description: Códigos estables. Agregar uno nuevo es compatible; cambiar uno no.
+      enum:
+        - validation_failed
+        - invalid_credentials
+        - unauthenticated
+        - session_expired
+        - csrf_invalid
+        - password_change_required
+        - forbidden
+        - not_found
+        - weak_password
+        - reset_token_invalid
+        - too_many_attempts
+        - payload_too_large
+        - internal_error
+        - service_unavailable
+
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Ruta del campo, por ejemplo `newPassword`.
+        message:
+          type: string
+      additionalProperties: false
+
+    PageInfo:
+      type: object
+      required: [nextCursor]
+      properties:
+        nextCursor:
+          type: [string, 'null']
+          description: '`null` cuando no hay más páginas.'
+      additionalProperties: false
+
+    CsrfToken:
+      type: object
+      required: [csrfToken]
+      properties:
+        csrfToken: { type: string, minLength: 32, maxLength: 128 }
+      additionalProperties: false
+
+    Password:
+      type: string
+      description: |
+        Contraseña nueva: de 12 a 128 caracteres, se recomiendan frases. No se
+        exigen símbolos ni mayúsculas; se rechazan contraseñas comunes o que
+        contengan el usuario (`weak_password`).
+      minLength: 12
+      maxLength: 128
+      writeOnly: true
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Código del estudiante o usuario del personal.
+          examples: ['000123']
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+      additionalProperties: false
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 128, writeOnly: true }
+        newPassword: { $ref: '#/components/schemas/Password' }
+      additionalProperties: false
+
+    ForgotPasswordRequest:
+      type: object
+      required: [username]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 80 }
+      additionalProperties: false
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 128
+          writeOnly: true
+          description: El token del enlace del correo.
+        newPassword: { $ref: '#/components/schemas/Password' }
+      additionalProperties: false
+
+    Role:
+      type: string
+      enum: [platform_admin, school_admin, coordinator, teacher, student]
+
+    CoordinatorType:
+      type: string
+      enum: [academica, pastoral, convivencia, orientacion]
+
+    RoleGrant:
+      type: object
+      required: [role, coordinatorType]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        coordinatorType:
+          description: Solo con `role = coordinator`; si no, `null`.
+          oneOf:
+            - $ref: '#/components/schemas/CoordinatorType'
+            - type: 'null'
+      additionalProperties: false
+
+    School:
+      type: object
+      required: [id, code, name, timezone]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [bethlemitasnorte] }
+        name: { type: string }
+        timezone:
+          type: string
+          description: Zona IANA para mostrar fechas.
+          examples: [America/Bogota]
+      additionalProperties: false
+
+    Me:
+      type: object
+      required: [id, username, displayName, firstName, lastName, email, mustChangePassword, school, roles]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        email:
+          type: [string, 'null']
+          format: email
+          description: Opcional; los menores pueden no tener correo.
+        mustChangePassword:
+          type: boolean
+          description: Si es `true`, el cliente lleva a cambiar la contraseña antes de seguir.
+        school:
+          description: Colegio del host; `null` solo en el host de administración de la plataforma.
+          oneOf:
+            - $ref: '#/components/schemas/School'
+            - type: 'null'
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RoleGrant' }
+      additionalProperties: false
