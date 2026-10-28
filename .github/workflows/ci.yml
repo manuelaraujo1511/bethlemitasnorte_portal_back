@@ -47,6 +47,7 @@ jobs:
       DB_PASSWORD: ci-only
       DB_NAME: campus
       LOG_LEVEL: warn
+      SESSION_SECRET: ci-only-session-secret-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,8 +63,13 @@ jobs:
           MYSQL: mysql -h127.0.0.1 -uroot
           MYSQL_PWD: ci-only-root
         run: npm run db:test
-      - name: /health/ready contra la base
+      - name: /health/ready y login de punta a punta contra la base
+        env:
+          DEV_PASSWORD: ci-only-dev-password
         run: |
+          npm run db:dev-passwords
           npx tsx src/server.ts &
           for i in $(seq 1 30); do curl -sf localhost:3000/health && break; sleep 1; done
           curl -sf localhost:3000/health/ready
+          npx tsx scripts/smoke-login.ts luis.gomez
+          npx tsx scripts/smoke-login.ts 900002

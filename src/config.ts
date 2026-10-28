@@ -12,6 +12,11 @@ const envSchema = z.object({
   DB_NAME: z.string().min(1),
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
   // TLS hacia la base: obligatorio fuera de desarrollo (docs/database-design.md).
+  // Firma del token CSRF ligado a la sesión (HMAC). 32 caracteres o más, fuera del repo.
+  SESSION_SECRET: z.string().min(32),
+  // Sin uso durante este tiempo la sesión vence; y vence siempre al cumplir la vida máxima.
+  SESSION_IDLE_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(30),
+  SESSION_MAX_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
   DB_SSL: z
     .enum(['true', 'false'])
     .default('false')
