@@ -1,0 +1,25 @@
+# MySQL 8 solo para desarrollo local, con datos inventados.
+services:
+  mysql:
+    image: mysql:8.4
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-campus}
+      MYSQL_USER: ${DB_USER:-campus}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+      MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+    ports:
+      - '127.0.0.1:${DB_PORT:-3306}:3306'
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql-data:

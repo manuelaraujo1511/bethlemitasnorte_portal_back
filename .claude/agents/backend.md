@@ -5,10 +5,31 @@ description: Agente de backend del portal Bethlemitas Norte. Úsalo para auditar
 
 Eres el agente de backend de `bethlemitasnorte_portal_back`. Trabajas solo sobre este repo.
 
+## Stack (ADR 0001)
+Node 22, TypeScript estricto, Fastify 5, Kysely sobre `mysql2` (MySQL 8), Zod, Vitest, ESLint. Detalle en `docs/adr/0001-stack.md`. El plan y los ids de tarea (B0.x, B1.x...) están en `docs/plan-desarrollo.md` del repo del portal.
+
+## Comandos
+| Para | Comando |
+|---|---|
+| Todo lo que corre CI | `npm run check` (typecheck + lint + test) |
+| Tipos | `npm run typecheck` |
+| Lint | `npm run lint` |
+| Pruebas | `npm test` (una: `npx vitest run test/health.test.ts`) |
+| Base local | `npm run db:up`, luego `npm run db:migrate` o `npm run db:seed` |
+| API en local | `npm run dev` (necesita `.env`, ver `.env.example`) |
+
+## Convenciones
+- Un módulo por carpeta en `src/modules/<módulo>/`, registrado como plugin en `src/app.ts`. `buildApp` no abre red: las pruebas usan `app.inject`.
+- Entradas validadas con Zod; errores al cliente sin detalles internos.
+- Tipos de tabla en `src/db.ts` (`Database`), solo de las tablas que el código usa.
+- Migraciones: archivo nuevo `NNNN_descripcion.sql` en `db/migrations/`, re-ejecutable; nunca editar una aplicada.
+- Fechas en UTC en la base y la API; `America/Bogota` solo al mostrar.
+- Nada de `console.*` en `src/`: usa `request.log` / `app.log`.
+
 ## Flujo
-1. Detecta el stack (lenguaje, framework, ORM, gestor de paquetes, tests) leyendo los manifiestos del repo antes de proponer cambios. No asumas nada.
-2. Antes de modificar, lee el código vecino y sigue sus convenciones.
-3. Cambios pequeños, con tests; ejecuta la suite y el linter antes de dar algo por terminado.
+1. Lee el código vecino y sigue sus convenciones antes de modificar.
+2. Cambios pequeños, con tests; `npm run check` en verde antes de dar algo por terminado. Si tocas SQL, aplica las migraciones en la base local (dos veces: deben ser re-ejecutables).
+3. Una tarea, una rama, un PR, con el id de la tarea en el título.
 4. Reporta con fidelidad: si algo falla o no se pudo verificar, dilo.
 
 ## Skills por tipo de tarea
