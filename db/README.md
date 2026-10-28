@@ -14,6 +14,7 @@ Desde la tarea B0.2 (2026-10-28) este directorio es la única fuente de las migr
 | `migrations/0004_grading_views.sql` | 2b | Vistas de cálculo: `v_category_scores`, `v_period_scores` y `v_definitive_scores` (misma regla que `campus/packages/core/src/logic/grading.ts`) |
 | `seed_dev.sql` | solo dev | Datos inventados que reflejan el mock; requiere solo `0001` |
 | `seed_dev_academic.sql` | solo dev | Calificación del ejemplo del dueño (46 y 48), autoevaluación, notas de período, asistencia, observador, co-docencia, correo, PQRS y avisos; requiere `0001`–`0004` y `seed_dev.sql` |
+| `seed_dev_school.sql` | solo dev | B1.1: dominios del colegio (`localhost`, `demo.campus.localhost`), 39 estudiantes más (3.º B con 30 y 3.º A con 10) y las 8 asignaciones de 3.º A; requiere los dos seeds anteriores |
 | `tests/run.sh` + `tests/checks.sql` | pruebas | Base temporal, aplica todo dos veces y corre 46 comprobaciones (cálculo de notas y rechazos esperados) |
 | `tests/load_volume.sql` + `tests/explain.sql` | rendimiento | Volumen de un colegio grande y `EXPLAIN ANALYZE` de las consultas clave (resultados en `docs/database-design.md` §10) |
 
@@ -23,7 +24,7 @@ Con el runner del backend (recomendado; ver el README raíz):
 
 ```bash
 npm run db:migrate   # migraciones pendientes
-npm run db:seed      # migraciones + seed_dev.sql + seed_dev_academic.sql (nunca en producción)
+npm run db:seed      # migraciones + los tres seeds de desarrollo (nunca en producción)
 npm run db:test      # tests/run.sh: base temporal, todo dos veces y checks.sql
 ```
 
@@ -42,6 +43,7 @@ mysql -h HOST -u USUARIO campus < db/migrations/0004_grading_views.sql
 # Solo desarrollo, base local y descartable:
 mysql -h HOST -u USUARIO campus < db/seed_dev.sql
 mysql -h HOST -u USUARIO campus < db/seed_dev_academic.sql
+mysql -h HOST -u USUARIO campus < db/seed_dev_school.sql
 ```
 
 Requisitos del servidor y de la conexión:
