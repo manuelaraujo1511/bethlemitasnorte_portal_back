@@ -26,6 +26,10 @@ info:
       y repite con `?cursor=` el `page.nextCursor` de la respuesta anterior hasta que
       sea `null`. El cursor es opaco: no se interpreta ni se construye. Lo usarán los
       listados de fases siguientes (esquema `PageInfo`, parámetros `Cursor` y `Limit`).
+    - **Fuera de alcance = 404:** un recurso que existe pero que la persona no
+      puede ver responde `404 not_found`, igual que uno inexistente, para no
+      confirmar que existe. `403 forbidden` solo se usa para acciones sobre
+      recursos que la persona sí puede ver.
     - **Colegio:** se resuelve por el host de la petición (`school_domains`). El
       estudiante solo escribe su código; nunca se envía el colegio en el cuerpo.
 
@@ -171,6 +175,11 @@ paths:
         cuenta tiene correo verificado, envía un enlace de un solo uso que vence en
         30 minutos (B1.5). Las cuentas de menores sin correo se restablecen con el
         colegio.
+
+        El token va en el fragmento del enlace (`/restablecer#token=…`), nunca en
+        la consulta (`?token=`), para que no quede en logs ni en el `Referer`; la
+        página que lo lee se sirve con `Referrer-Policy: no-referrer` y lo envía a
+        `POST /auth/password/reset`.
       security: []
       parameters:
         - $ref: '#/components/parameters/CsrfHeader'
@@ -357,6 +366,7 @@ components:
         - reset_token_invalid
         - too_many_attempts
         - payload_too_large
+        - request_rejected
         - internal_error
         - service_unavailable
 

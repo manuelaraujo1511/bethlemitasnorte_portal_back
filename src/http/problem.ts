@@ -14,6 +14,7 @@ export const errorCodes = [
   'reset_token_invalid',
   'too_many_attempts',
   'payload_too_large',
+  'request_rejected',
   'internal_error',
   'service_unavailable',
 ] as const;
@@ -75,9 +76,9 @@ export function registerProblemHandlers(app: FastifyInstance): void {
       return send(request, reply, 400, 'validation_failed', 'La petición no es válida', errors);
     }
     const status = err.statusCode ?? 500;
-    const known = byStatus[status];
-    if (status < 500 && known) {
-      return send(request, reply, status, known[0], known[1]);
+    if (status >= 400 && status < 500) {
+      const [code, title] = byStatus[status] ?? ['request_rejected', 'La petición no se pudo atender'];
+      return send(request, reply, status, code, title);
     }
     request.log.error({ err }, 'error no controlado');
     return send(request, reply, 500, 'internal_error', 'Algo salió mal; intenta de nuevo');

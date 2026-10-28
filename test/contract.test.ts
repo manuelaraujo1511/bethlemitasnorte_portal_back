@@ -20,6 +20,9 @@ function app() {
   a.get('/api/v1/_test/boom', async () => {
     throw new Error("ER_ACCESS_DENIED_ERROR: Access denied for user 'campus'@'10.0.0.5'");
   });
+  a.get('/api/v1/_test/conflict', async () => {
+    throw Object.assign(new Error('fila duplicada en users'), { statusCode: 409 });
+  });
   a.get('/api/v1/_test/app-error', async () => {
     throw new AppError(401, 'invalid_credentials', 'Usuario o contraseña incorrectos');
   });
@@ -84,6 +87,12 @@ describe('errores como problem+json', () => {
       payload: { name: 'x'.repeat(70 * 1024) },
     });
     expectProblem(res, 413, 'payload_too_large');
+  });
+
+  it('un 4xx sin código propio conserva su estado y no se vuelve 500', async () => {
+    const res = await app().inject({ method: 'GET', url: '/api/v1/_test/conflict' });
+    expectProblem(res, 409, 'request_rejected');
+    expect(res.body).not.toContain('fila duplicada');
   });
 
   it('un AppError conserva su estado y código', async () => {
