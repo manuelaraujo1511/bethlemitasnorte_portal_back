@@ -17,6 +17,7 @@
     "db:up": "docker compose up -d mysql",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env scripts/migrate.ts --seed",
+    "db:test": "bash db/tests/run.sh",
     "check": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {

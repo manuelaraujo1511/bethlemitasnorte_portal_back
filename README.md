@@ -18,10 +18,11 @@ npm install
 npm run db:up               # MySQL 8.4 en 127.0.0.1:3306
 npm run db:migrate          # aplica db/migrations/*.sql pendientes
 npm run db:seed             # migraciones + datos inventados (nunca en producción)
+npm run db:test             # pruebas de la base (ver db/README.md)
 npm run dev                 # API en http://127.0.0.1:3000
 ```
 
-Las migraciones viven en `db/migrations/` (se están moviendo desde `backend/db/` del repo del portal, tarea B0.2). Mientras tanto se puede apuntar a ellas con `MIGRATIONS_DIR` y `SEED_FILES` (lista en orden, separada por comas).
+La base de datos vive en [`db/`](db/README.md): migraciones, seeds de desarrollo y pruebas. Las migraciones nuevas se escriben solo aquí (se movieron desde el repo del portal en la tarea B0.2). `npm run db:test` usa el cliente `mysql`; con el MySQL de Docker: `MYSQL="docker compose exec -T -e MYSQL_PWD mysql mysql -uroot" MYSQL_PWD=<DB_ROOT_PASSWORD> npm run db:test`.
 
 ## Comandos
 
@@ -51,6 +52,8 @@ src/
   modules/<módulo>/ rutas y lógica por módulo
 scripts/migrate.ts  runner de migraciones SQL
 db/migrations/      0001_*.sql, 0002_*.sql, ...
+db/seed_*.sql       datos inventados de desarrollo
+db/tests/           pruebas y medición de la base
 test/               pruebas Vitest
 docs/adr/           decisiones de arquitectura
 ```

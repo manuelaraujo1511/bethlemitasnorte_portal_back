@@ -10,7 +10,8 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-campus}
       MYSQL_USER: ${DB_USER:-campus}
       MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
-      MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+      # root solo para db:test (crea y borra bases temporales campus_test_*).
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en .env}
     ports:
       - '127.0.0.1:${DB_PORT:-3306}:3306'
     volumes:

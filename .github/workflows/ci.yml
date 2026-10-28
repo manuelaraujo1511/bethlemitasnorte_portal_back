@@ -25,7 +25,7 @@ jobs:
 
   db:
     # Migraciones desde cero contra MySQL real, dos veces (deben ser re-ejecutables),
-    # y la API respondiendo /health/ready contra esa base.
+    # seeds, las 46 comprobaciones de db/tests y la API respondiendo /health/ready.
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -34,7 +34,7 @@ jobs:
           MYSQL_DATABASE: campus
           MYSQL_USER: campus
           MYSQL_PASSWORD: ci-only
-          MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+          MYSQL_ROOT_PASSWORD: ci-only-root
         ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
@@ -55,9 +55,12 @@ jobs:
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run db:migrate
-      - name: Seed de desarrollo
-        if: hashFiles('db/seed_dev.sql') != ''
-        run: npm run db:seed
+      - run: npm run db:seed
+      - name: Pruebas de la base (db/tests/run.sh)
+        env:
+          MYSQL: mysql -h127.0.0.1 -uroot
+          MYSQL_PWD: ci-only-root
+        run: npm run db:test
       - name: /health/ready contra la base
         run: |
           npx tsx src/server.ts &
