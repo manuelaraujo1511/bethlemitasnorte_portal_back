@@ -11,7 +11,8 @@ Node 22, TypeScript estricto, Fastify 5, Kysely sobre `mysql2` (MySQL 8), Zod, V
 ## Comandos
 | Para | Comando |
 |---|---|
-| Todo lo que corre CI | `npm run check` (typecheck + lint + test) |
+| Todo lo que corre CI | `npm run check` (typecheck + lint + contrato + test) |
+| Contrato | `npm run api:lint` |
 | Tipos | `npm run typecheck` |
 | Lint | `npm run lint` |
 | Pruebas | `npm test` (una: `npx vitest run test/health.test.ts`) |
@@ -20,7 +21,8 @@ Node 22, TypeScript estricto, Fastify 5, Kysely sobre `mysql2` (MySQL 8), Zod, V
 
 ## Convenciones
 - Un módulo por carpeta en `src/modules/<módulo>/`, registrado como plugin en `src/app.ts`. `buildApp` no abre red: las pruebas usan `app.inject`.
-- Entradas validadas con Zod; errores al cliente sin detalles internos.
+- Contrato primero: un endpoint nuevo empieza en `openapi.yaml`; avisa al hilo de Front cuando cambie.
+- Entradas validadas con esquema; errores con `throw new AppError(status, code, título)` (`src/http/problem.ts`), con un `code` del enum `ErrorCode` del contrato. Nunca detalles internos al cliente.
 - Tipos de tabla en `src/db.ts` (`Database`), solo de las tablas que el código usa.
 - Migraciones: archivo nuevo `NNNN_descripcion.sql` en `db/migrations/`, re-ejecutable; nunca editar una aplicada.
 - Fechas en UTC en la base y la API; `America/Bogota` solo al mostrar.

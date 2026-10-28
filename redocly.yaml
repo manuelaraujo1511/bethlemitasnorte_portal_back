@@ -1,0 +1,7 @@
+extends:
+  - recommended-strict
+rules:
+  # Repo privado, sin licencia pública.
+  info-license: off
+  # Cursor, Limit y PageInfo quedan definidos para los listados de fases siguientes.
+  no-unused-components: off
