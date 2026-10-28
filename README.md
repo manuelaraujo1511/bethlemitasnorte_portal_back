@@ -13,12 +13,13 @@ Solo datos inventados: no se cargan datos reales de estudiantes, familias ni doc
 Requiere Node 22 y Docker.
 
 ```bash
-cp .env.example .env        # cambia DB_PASSWORD
+cp .env.example .env        # cambia DB_PASSWORD y SESSION_SECRET
 npm install
 npm run db:up               # MySQL 8.4 en 127.0.0.1:3306
 npm run db:migrate          # aplica db/migrations/*.sql pendientes
 npm run db:seed             # migraciones + datos inventados (nunca en producción)
 npm run db:test             # pruebas de la base (ver db/README.md)
+DEV_PASSWORD='una-clave-de-12+' npm run db:dev-passwords  # clave común para los usuarios del seed
 npm run dev                 # API en http://127.0.0.1:3000
 ```
 
@@ -37,7 +38,7 @@ La base de datos vive en [`db/`](db/README.md): migraciones, seeds de desarrollo
 
 ## Contrato de la API
 
-[`openapi.yaml`](openapi.yaml) es el contrato v1 (`/api/v1`). Un endpoint nuevo empieza como cambio en ese archivo; el front genera sus tipos desde ahí. Ahí están las convenciones: errores `application/problem+json` con `code` estable, paginación por cursor, fechas en UTC, sesión por cookie y CSRF de doble envío. Hoy define `/auth/*` y `/me`; las rutas se implementan en B1.2 y B2.1.
+[`openapi.yaml`](openapi.yaml) es el contrato v1 (`/api/v1`). Un endpoint nuevo empieza como cambio en ese archivo; el front genera sus tipos desde ahí. Ahí están las convenciones: errores `application/problem+json` con `code` estable, paginación por cursor, fechas en UTC, sesión por cookie y CSRF de doble envío. Hoy define `/auth/*` y `/me`.
 
 Todos los errores ya salen como `application/problem+json` (`src/http/problem.ts`); un 5xx solo devuelve `requestId`.
 
@@ -47,6 +48,12 @@ Todos los errores ya salen como `application/problem+json` (`src/http/problem.ts
 |---|---|
 | `GET /health` | El proceso responde; no toca la base |
 | `GET /health/ready` | La base responde (`503` si no) |
+| `GET /api/v1/auth/csrf` | Entrega la cookie `__Host-campus_csrf` (hay que mandarla en `X-CSRF-Token` en todo lo que no sea GET) |
+| `POST /api/v1/auth/login` | Usuario (o código de estudiante) y contraseña; abre sesión nueva y rota el CSRF |
+| `POST /api/v1/auth/logout` | Revoca la sesión y borra las cookies |
+| `GET /api/v1/me` | Usuario de la sesión, colegio y roles |
+
+Login (B1.2): el colegio sale del `Host` (`school_domains`); la contraseña se verifica con argon2id y, si el usuario no existe, contra un hash ficticio, para que el tiempo de respuesta no delate qué usuarios existen. La sesión es un token aleatorio en `__Host-campus_session` (HttpOnly, Secure, SameSite=Lax) y en la base solo queda su SHA-256. Vence por inactividad (`SESSION_IDLE_MINUTES`) y por vida máxima (`SESSION_MAX_HOURS`). Con sesión, el token CSRF es un HMAC del hash de la sesión con `SESSION_SECRET`, así que un CSRF de otra sesión no sirve. Si el usuario debe cambiar la contraseña, todo responde `403 password_change_required` menos `/me`, `/auth/csrf`, `/auth/logout` y `/auth/password/change`. Para probar en local, pide con `Host: demo.campus.localhost` (o `localhost`).
 
 ## Estructura
 
@@ -58,6 +65,8 @@ src/
   db.ts             Kysely + pool mysql2 en UTC
   modules/<módulo>/ rutas y lógica por módulo
 scripts/migrate.ts  runner de migraciones SQL
+scripts/dev-passwords.ts  clave de desarrollo para los usuarios del seed
+scripts/smoke-login.ts    login de punta a punta contra un servidor en marcha (CI)
 db/migrations/      0001_*.sql, 0002_*.sql, ...
 db/seed_*.sql       datos inventados de desarrollo
 db/tests/           pruebas y medición de la base

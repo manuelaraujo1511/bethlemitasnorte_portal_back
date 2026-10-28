@@ -10,7 +10,7 @@ const config = loadConfig();
 const seed = process.argv.includes('--seed');
 const migrationsDir = path.resolve(process.env.MIGRATIONS_DIR ?? 'db/migrations');
 // Seeds en orden; cada uno depende de los anteriores.
-const seedFiles = (process.env.SEED_FILES ?? 'db/seed_dev.sql,db/seed_dev_academic.sql')
+const seedFiles = (process.env.SEED_FILES ?? 'db/seed_dev.sql,db/seed_dev_academic.sql,db/seed_dev_school.sql')
   .split(',')
   .map((f) => f.trim())
   .filter((f) => f.length > 0)

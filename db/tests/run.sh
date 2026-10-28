@@ -19,7 +19,7 @@ trap cleanup EXIT
 
 run -e "CREATE DATABASE \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
 
-files=("$DB_DIR"/migrations/*.sql "$DB_DIR/seed_dev.sql" "$DB_DIR/seed_dev_academic.sql")
+files=("$DB_DIR"/migrations/*.sql "$DB_DIR/seed_dev.sql" "$DB_DIR/seed_dev_academic.sql" "$DB_DIR/seed_dev_school.sql")
 for pass in 1 2; do
   for f in "${files[@]}"; do
     run "$DB" < "$f"

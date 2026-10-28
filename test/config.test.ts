@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
-const base = { DB_HOST: 'localhost', DB_USER: 'campus', DB_PASSWORD: 'x', DB_NAME: 'campus' };
+const base = { DB_HOST: 'localhost', DB_USER: 'campus', DB_PASSWORD: 'x', DB_NAME: 'campus', SESSION_SECRET: 's'.repeat(32) };
 
 describe('loadConfig', () => {
   it('aplica valores por defecto', () => {

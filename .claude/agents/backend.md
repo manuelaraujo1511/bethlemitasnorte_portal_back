@@ -18,9 +18,10 @@ Node 22, TypeScript estricto, Fastify 5, Kysely sobre `mysql2` (MySQL 8), Zod, V
 | Pruebas | `npm test` (una: `npx vitest run test/health.test.ts`) |
 | Base local | `npm run db:up`, luego `npm run db:migrate` o `npm run db:seed` |
 | API en local | `npm run dev` (necesita `.env`, ver `.env.example`) |
+| Probar login en local | `DEV_PASSWORD=... npm run db:dev-passwords`, luego `DEV_PASSWORD=... npx tsx scripts/smoke-login.ts luis.gomez` |
 
 ## Convenciones
-- Un módulo por carpeta en `src/modules/<módulo>/`, registrado como plugin en `src/app.ts`. `buildApp` no abre red: las pruebas usan `app.inject`.
+- Un módulo por carpeta en `src/modules/<módulo>/`, registrado como plugin en `src/app.ts`. Las rutas de `/api/v1` entran por `apiModules` para heredar sesión, CSRF y el bloqueo por `mustChangePassword` (`src/modules/auth/plugin.ts`); `request.session` trae usuario y colegio. `buildApp` no abre red: las pruebas usan `app.inject` (auth con `test/support/memory-auth-store.ts`).
 - Contrato primero: un endpoint nuevo empieza en `openapi.yaml`; avisa al hilo de Front cuando cambie.
 - Entradas validadas con esquema; errores con `throw new AppError(status, code, título)` (`src/http/problem.ts`), con un `code` del enum `ErrorCode` del contrato. Nunca detalles internos al cliente.
 - Tipos de tabla en `src/db.ts` (`Database`), solo de las tablas que el código usa.
