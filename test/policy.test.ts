@@ -68,15 +68,22 @@ describe('matriz de permisos (database-design.md §2)', () => {
   });
 
   it('usuarios y roles', () => {
-    matrix(
-      { type: 'user', schoolId: S, role: 'teacher' },
-      { admin: 'CRUD', coordAcad: 'R', coordConv: 'R', coordOrient: 'R', titular: 'R', reemplazo: 'R', director: 'R', docenteOtroGrupo: 'R', estudiante: 'R', otroEstudiante: 'R' },
-    );
+    matrix({ type: 'user', schoolId: S, role: 'teacher' }, { admin: 'CRUD', coordAcad: 'R', coordConv: 'R', coordOrient: 'R' });
     // El admin de plataforma solo maneja cuentas de admin de colegio.
     expect(can(actors.plataforma, 'create', { type: 'user', schoolId: S, role: 'school_admin' })).toBe(true);
     expect(can(actors.plataforma, 'delete', { type: 'user', schoolId: S, role: 'school_admin' })).toBe(false);
     // Nadie de un colegio toca una cuenta de plataforma.
     expect(can(actors.admin, 'update', { type: 'user', schoolId: S, role: 'platform_admin' })).toBe(false);
+  });
+
+  it('contactos (directorio básico)', () => {
+    matrix(
+      { type: 'user_contact', schoolId: S },
+      {
+        admin: 'R', coordAcad: 'R', coordConv: 'R', coordOrient: 'R',
+        titular: 'R', reemplazo: 'R', director: 'R', docenteOtroGrupo: 'R', estudiante: 'R', otroEstudiante: 'R',
+      },
+    );
   });
 
   it('matrículas', () => {
@@ -158,14 +165,16 @@ describe('matriz de permisos (database-design.md §2)', () => {
     matrix({ type: 'self_assessment', schoolId: S, assignmentId: 1, studentId: STUDENT, windowOpen: false }, { ...base, estudiante: 'R' });
   });
 
-  it('correo: lo leen sus participantes', () => {
+  it('correo: solo los participantes leen y responden', () => {
+    matrix({ type: 'message', schoolId: S, participantUserIds: [2, 15] }, { titular: 'CR', estudiante: 'CR' });
     matrix(
-      { type: 'message', schoolId: S, participantUserIds: [2, 15] },
+      { type: 'new_message', schoolId: S, recipientUserIds: [2] },
       {
-        admin: 'CR', coordAcad: 'CR', coordConv: 'CR', coordOrient: 'CR',
-        titular: 'CR', reemplazo: 'C', director: 'C', docenteOtroGrupo: 'C', estudiante: 'CR', otroEstudiante: 'C',
+        admin: 'C', coordAcad: 'C', coordConv: 'C', coordOrient: 'C',
+        titular: 'C', reemplazo: 'C', director: 'C', docenteOtroGrupo: 'C', estudiante: 'C', otroEstudiante: 'C',
       },
     );
+    matrix({ type: 'new_message', schoolId: S, recipientUserIds: [] }, {});
   });
 
   it('PQRS', () => {

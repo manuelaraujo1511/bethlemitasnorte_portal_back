@@ -61,7 +61,7 @@ Hosts: el colegio sale del `Host` y la sesión queda atada al colegio donde se i
 
 Con sesión, `request.actor` trae roles, tipos de coordinación, asignaciones vigentes hoy (titular o reemplazo dentro de su vigencia, en la fecha del colegio), grupos que dirige y la matrícula activa (`src/modules/authz/actor.ts`). Toda decisión de permisos pasa por `can(actor, acción, recurso)` / `authorize(...)` en `src/modules/authz/policy.ts`, que sigue la matriz de `docs/database-design.md §2` del portal; `test/policy.test.ts` la prueba tabla por tabla. `authorize` responde `404` si la persona no puede ver el recurso y `403` si lo ve pero no puede hacer la acción. Un recurso de otro colegio nunca se permite, y el admin de plataforma no ve datos de menores.
 
-Lecturas de la matriz que se tomaron como supuesto: en el observador, la coordinación académica gestiona las observaciones académicas y la de convivencia las de convivencia, y cualquier coordinación las de reconocimiento. Un mensaje solo lo leen sus participantes. Docentes y estudiantes ven los eventos y avisos de sus grupos o los de todo el colegio.
+Lecturas de la matriz que se tomaron como supuesto: en el observador, la coordinación académica gestiona las observaciones académicas y la de convivencia las de convivencia, y cualquier coordinación las de reconocimiento. Un mensaje solo lo leen y responden sus participantes; escribir uno nuevo es `new_message`, donde irá la regla de quién le escribe a quién (pregunta 5). Docentes y estudiantes no ven cuentas de otras personas, solo su contacto (`user_contact`). Docentes y estudiantes ven los eventos y avisos de sus grupos o los de todo el colegio.
 
 ## Estructura
 
