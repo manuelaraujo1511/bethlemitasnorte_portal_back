@@ -57,6 +57,12 @@ Login (B1.2): el colegio sale del `Host` (`school_domains`); la contraseña se v
 
 Hosts: el colegio sale del `Host` y la sesión queda atada al colegio donde se inició (`auth_sessions.school_id`). `platform_admin` solo entra por `PLATFORM_ADMIN_HOST`, y un host que no es de ningún colegio ni del panel responde `404` en `/api/v1`. La API no usa `trustProxy`: en producción el proxy debe reenviar el `Host` original del navegador (no reescribirlo ni depender de `X-Forwarded-Host`); queda anotado para el despliegue (B7.x).
 
+## Permisos (B1.3)
+
+Con sesión, `request.actor` trae roles, tipos de coordinación, asignaciones vigentes hoy (titular o reemplazo dentro de su vigencia, en la fecha del colegio), grupos que dirige y la matrícula activa (`src/modules/authz/actor.ts`). Toda decisión de permisos pasa por `can(actor, acción, recurso)` / `authorize(...)` en `src/modules/authz/policy.ts`, que sigue la matriz de `docs/database-design.md §2` del portal; `test/policy.test.ts` la prueba tabla por tabla. `authorize` responde `404` si la persona no puede ver el recurso y `403` si lo ve pero no puede hacer la acción. Un recurso de otro colegio nunca se permite, y el admin de plataforma no ve datos de menores.
+
+Lecturas de la matriz que se tomaron como supuesto: en el observador, la coordinación académica gestiona las observaciones académicas y la de convivencia las de convivencia, y cualquier coordinación las de reconocimiento. Un mensaje solo lo leen sus participantes. Docentes y estudiantes ven los eventos y avisos de sus grupos o los de todo el colegio.
+
 ## Estructura
 
 ```

@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDb, pingDb } from './db.js';
+import { createKyselyActorStore } from './modules/authz/actor.js';
 import { createKyselyAuthStore } from './modules/auth/store.js';
 
 const config = loadConfig();
@@ -10,6 +11,7 @@ const app = buildApp({
   checkDb: () => pingDb(db),
   auth: {
     store: createKyselyAuthStore(db),
+    actors: createKyselyActorStore(db),
     secret: config.SESSION_SECRET,
     idleMs: config.SESSION_IDLE_MINUTES * 60_000,
     maxMs: config.SESSION_MAX_HOURS * 3_600_000,

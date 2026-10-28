@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { hashPassword, sha256 } from '../src/modules/auth/crypto.js';
 import { CSRF_COOKIE, SESSION_COOKIE } from '../src/modules/auth/plugin.js';
+import type { ActorStore } from '../src/modules/authz/actor.js';
+import { requireActor } from '../src/modules/authz/policy.js';
 import { memoryAuthStore, type MemoryUser } from './support/memory-auth-store.js';
 
 const HOST = 'demo.campus.localhost';
@@ -359,5 +361,34 @@ describe('host del colegio y de la plataforma', () => {
     expect(sessions[0]!.revokedAt).toBeNull();
     // En su colegio sigue funcionando.
     expect((await a.get('/api/v1/me')).statusCode).toBe(200);
+  });
+});
+
+describe('request.actor', () => {
+  it('se carga con la sesión y el colegio del host; sin sesión, 401', async () => {
+    const seen: { userId: number; schoolId: number | null; today: string }[] = [];
+    const actors: ActorStore = {
+      async loadActor(userId, schoolId, today) {
+        seen.push({ userId, schoolId, today });
+        return { userId, schoolId, roles: new Set(['student'] as const), coordinatorTypes: new Set(), staffId: null, assignments: new Map(), directedGroupIds: new Set(), enrollment: null };
+      },
+    };
+    const probe: FastifyPluginAsync = async (api) => {
+      api.get('/yo', async (request) => ({ roles: [...requireActor(request).roles] }));
+    };
+    const clock = { t: new Date('2026-10-29T03:00:00.000Z') }; // 28/10 en Bogotá
+    const mem = memoryAuthStore([school], [student()]);
+    const app = buildApp({
+      config: { LOG_LEVEL: 'silent' },
+      checkDb: async () => {},
+      auth: { store: mem.store, actors, secret: 'x'.repeat(40), idleMs: IDLE, maxMs: MAX, now: () => clock.t },
+      apiModules: [probe],
+    });
+    const b = browser(app);
+    expect((await b.get('/api/v1/yo')).statusCode).toBe(401);
+    await b.login();
+    const res = await b.get('/api/v1/yo');
+    expect(res.json()).toEqual({ roles: ['student'] });
+    expect(seen.at(-1)).toEqual({ userId: 15, schoolId: 1, today: '2026-10-28' });
   });
 });

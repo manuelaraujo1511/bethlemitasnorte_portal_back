@@ -64,6 +64,8 @@ jobs:
           MYSQL: mysql -h127.0.0.1 -uroot
           MYSQL_PWD: ci-only-root
         run: npm run db:test
+      - name: Pruebas de la API contra la base (test/db)
+        run: DB_INTEGRATION=1 npx vitest run test/db
       - name: /health/ready y login de punta a punta contra la base
         env:
           DEV_PASSWORD: ci-only-dev-password

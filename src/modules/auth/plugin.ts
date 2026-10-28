@@ -3,6 +3,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { AppError } from '../../http/problem.js';
 import { csrfForSession, newToken, safeEqual, sha256, verifyPassword } from './crypto.js';
+import { localDate, type Actor, type ActorStore } from '../authz/actor.js';
 import type { AuthStore, MeRecord, School, SessionRecord } from './store.js';
 
 export const SESSION_COOKIE = '__Host-campus_session';
@@ -16,6 +17,8 @@ const TOUCH_EVERY_MS = 60_000;
 
 export interface AuthOptions {
   store: AuthStore;
+  /** Carga el alcance de quien tiene sesión (B1.3); sin él, request.actor queda en null. */
+  actors?: ActorStore;
   secret: string;
   idleMs: number;
   maxMs: number;
@@ -29,6 +32,8 @@ declare module 'fastify' {
     school: School | null;
     session: SessionRecord | null;
     sessionExpired: boolean;
+    /** Roles y alcance de quien tiene sesión, en el colegio del host. */
+    actor: Actor | null;
   }
 }
 
@@ -93,6 +98,7 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
   app.decorateRequest('school', null);
   app.decorateRequest('session', null);
   app.decorateRequest('sessionExpired', false);
+  app.decorateRequest('actor', null);
 
   const setSessionCookies = (reply: FastifyReply, token: string, tokenHash: Buffer) => {
     reply.setCookie(SESSION_COOKIE, token, { ...cookieBase, httpOnly: true, maxAge: Math.floor(maxMs / 1000) });
@@ -156,6 +162,10 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
   app.addHook('preHandler', async (request) => {
     if (request.session?.mustChangePassword && !ALLOWED_WHILE_MUST_CHANGE.has(request.routeOptions.url ?? '')) {
       throw new AppError(403, 'password_change_required', 'Debes cambiar tu contraseña antes de seguir');
+    }
+    if (request.session && opts.actors) {
+      const today = localDate(now(), request.school?.timezone ?? 'UTC');
+      request.actor = await opts.actors.loadActor(request.session.userId, request.school?.id ?? null, today);
     }
   });
 
