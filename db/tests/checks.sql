@@ -13,13 +13,14 @@ DROP PROCEDURE IF EXISTS t_eq;
 DROP PROCEDURE IF EXISTS t_rejects;
 
 DELIMITER $$
+-- MESSAGE_TEXT admite hasta 128 caracteres: los mensajes se recortan a eso.
 -- Compara dos valores como texto (NULL solo es igual a NULL).
 CREATE PROCEDURE t_eq(IN label VARCHAR(200), IN actual TEXT, IN expected TEXT)
 BEGIN
-  DECLARE msg VARCHAR(255);
+  DECLARE msg VARCHAR(128);
   IF NOT (actual <=> expected) THEN
     SET msg = LEFT(CONCAT('FALLA: ', label, ' (esperado ', IFNULL(expected, 'NULL'),
-                          ', obtenido ', IFNULL(actual, 'NULL'), ')'), 255);
+                          ', obtenido ', IFNULL(actual, 'NULL'), ')'), 128);
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = msg;
   END IF;
 END$$
@@ -28,7 +29,7 @@ END$$
 CREATE PROCEDURE t_rejects(IN label VARCHAR(200), IN stmt TEXT)
 BEGIN
   DECLARE failed TINYINT DEFAULT 0;
-  DECLARE msg VARCHAR(255);
+  DECLARE msg VARCHAR(128);
   BEGIN
     DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET failed = 1;
     SET @t_stmt = stmt;
@@ -37,7 +38,7 @@ BEGIN
     DEALLOCATE PREPARE t_s;
   END;
   IF failed = 0 THEN
-    SET msg = LEFT(CONCAT('FALLA: la base acepto lo que debia rechazar: ', label), 255);
+    SET msg = LEFT(CONCAT('FALLA: la base acepto lo que debia rechazar: ', label), 128);
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = msg;
   END IF;
 END$$
@@ -46,7 +47,7 @@ DELIMITER ;
 -- ============================== Migraciones ==================================
 CALL t_eq('migraciones registradas',
   (SELECT GROUP_CONCAT(version ORDER BY version) FROM schema_migrations),
-  '0001_core,0002_academic_extras,0003_grading_codocencia,0004_grading_views');
+  '0001_core,0002_academic_extras,0003_grading_codocencia,0004_grading_views,0005_session_school');
 
 -- ============================== Calculo de notas =============================
 -- Ejemplo del dueno: 7 actividades (48,48,34,50,50,50,40) -> 45,7 -> 46.

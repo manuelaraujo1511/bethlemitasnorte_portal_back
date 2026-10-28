@@ -1,0 +1,14 @@
+# Configuración de gitleaks (S0.2). Reglas por defecto más una lista blanca de
+# valores de prueba evidentes. Agregar aquí solo valores inventados y obvios;
+# nunca rutas completas, para que un secreto real en esos archivos se siga detectando.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Valores de ejemplo y de CI que no son secretos"
+regexTarget = "match"
+regexes = [
+  '''ci-only-[a-z0-9-]+''',
+  '''genera-uno-propio[a-z0-9-]*''',
+  '''cambia-esta[a-z-]*''',
+]
