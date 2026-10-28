@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 import { createDb, pingDb } from './db.js';
 import { createKyselyActorStore } from './modules/authz/actor.js';
 import { createKyselyAuthStore } from './modules/auth/store.js';
+import { LoginThrottle } from './modules/auth/throttle.js';
 
 const config = loadConfig();
 const db = createDb(config);
@@ -16,6 +17,13 @@ const app = buildApp({
     idleMs: config.SESSION_IDLE_MINUTES * 60_000,
     maxMs: config.SESSION_MAX_HOURS * 3_600_000,
     adminHost: config.PLATFORM_ADMIN_HOST,
+    throttle: new LoginThrottle({
+      windowMs: config.LOGIN_WINDOW_MINUTES * 60_000,
+      maxAccountFailures: config.LOGIN_MAX_ATTEMPTS,
+      maxIpFailures: config.LOGIN_IP_MAX_ATTEMPTS,
+      baseLockMs: 60_000,
+      maxLockMs: config.LOGIN_LOCK_MAX_MINUTES * 60_000,
+    }),
   },
 });
 

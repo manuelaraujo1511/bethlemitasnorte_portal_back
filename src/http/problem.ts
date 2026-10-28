@@ -33,6 +33,8 @@ export class AppError extends Error {
     readonly code: ErrorCode,
     readonly title: string,
     readonly errors?: FieldError[],
+    /** Cabeceras de la respuesta, p. ej. Retry-After en un 429. */
+    readonly headers?: Record<string, string>,
   ) {
     super(title);
   }
@@ -66,6 +68,7 @@ const byStatus: Record<number, [ErrorCode, string]> = {
 export function registerProblemHandlers(app: FastifyInstance): void {
   app.setErrorHandler((err: FastifyError | AppError, request, reply) => {
     if (err instanceof AppError) {
+      if (err.headers) reply.headers(err.headers);
       return send(request, reply, err.status, err.code, err.title, err.errors);
     }
     if (err.validation) {

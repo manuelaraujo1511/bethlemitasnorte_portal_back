@@ -16,6 +16,11 @@ const envSchema = z.object({
   // Sin uso durante este tiempo la sesión vence; y vence siempre al cumplir la vida máxima.
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(30),
   SESSION_MAX_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
+  // Bloqueo progresivo de login (B1.4): fallos dentro de la ventana antes de bloquear.
+  LOGIN_WINDOW_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
+  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(100).default(5),
+  LOGIN_IP_MAX_ATTEMPTS: z.coerce.number().int().min(5).max(10_000).default(30),
+  LOGIN_LOCK_MAX_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
   // Host del panel de administración de la plataforma: el único donde entra platform_admin.
   // Sin definir, platform_admin no entra por ningún host.
   PLATFORM_ADMIN_HOST: z

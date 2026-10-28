@@ -4,6 +4,7 @@ import fp from 'fastify-plugin';
 import { AppError } from '../../http/problem.js';
 import { csrfForSession, newToken, safeEqual, sha256, verifyPassword } from './crypto.js';
 import { localDate, type Actor, type ActorStore } from '../authz/actor.js';
+import { LoginThrottle } from './throttle.js';
 import type { AuthStore, MeRecord, School, SessionRecord } from './store.js';
 
 export const SESSION_COOKIE = '__Host-campus_session';
@@ -24,6 +25,8 @@ export interface AuthOptions {
   maxMs: number;
   /** Host del panel de la plataforma (school = null); solo ahí entra platform_admin. */
   adminHost?: string | undefined;
+  /** Límite de intentos de login; sin él, uno nuevo con los valores por defecto. */
+  throttle?: LoginThrottle;
   now?: () => Date;
 }
 
@@ -93,6 +96,7 @@ const invalidCredentials = () => new AppError(401, 'invalid_credentials', 'Usuar
 const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
   const { store, secret, idleMs, maxMs, adminHost } = opts;
   const now = opts.now ?? (() => new Date());
+  const throttle = opts.throttle ?? new LoginThrottle();
 
   await app.register(cookie);
   app.decorateRequest('school', null);
@@ -194,12 +198,21 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
     async (request, reply) => {
       const { username, password } = request.body;
       const schoolId = request.school?.id ?? null;
+      const accountKey = LoginThrottle.accountKey(schoolId, username);
+      // El bloqueo se mira antes de tocar la base y depende solo de la clave (no de si la
+      // cuenta existe), así el 429 es el mismo para cuentas reales e inexistentes.
+      const wait = throttle.retryAfterSeconds(accountKey, request.ip, now().getTime());
+      if (wait > 0) {
+        request.log.warn('login bloqueado por demasiados intentos');
+        throw new AppError(429, 'too_many_attempts', 'Demasiados intentos; espera antes de reintentar', undefined, { 'retry-after': String(wait) });
+      }
       const candidate = await store.findLoginCandidate(schoolId, username.trim());
       // Siempre se verifica un hash (el real o uno ficticio) para que el tiempo no delate la cuenta.
       const passwordOk = await verifyPassword(candidate?.passwordHash ?? null, password);
       const t = now();
       const locked = candidate?.lockedUntil != null && candidate.lockedUntil.getTime() > t.getTime();
       if (!candidate || !passwordOk || !candidate.active || locked) {
+        throttle.recordFailure(accountKey, request.ip, t.getTime());
         if (candidate && !passwordOk) await store.recordLoginFailure(candidate.userId);
         throw invalidCredentials();
       }
@@ -219,6 +232,7 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
         now: t,
       });
       await store.recordLoginSuccess(candidate.userId, t);
+      throttle.recordSuccess(accountKey);
       setSessionCookies(reply, token, tokenHash);
       return toMe(me, request.school);
     },
