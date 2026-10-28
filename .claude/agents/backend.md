@@ -24,6 +24,7 @@ Node 22, TypeScript estricto, Fastify 5, Kysely sobre `mysql2` (MySQL 8), Zod, V
 - Un módulo por carpeta en `src/modules/<módulo>/`, registrado como plugin en `src/app.ts`. Las rutas de `/api/v1` entran por `apiModules` para heredar sesión, CSRF y el bloqueo por `mustChangePassword` (`src/modules/auth/plugin.ts`); `request.session` trae usuario y colegio. `buildApp` no abre red: las pruebas usan `app.inject` (auth con `test/support/memory-auth-store.ts`).
 - Contrato primero: un endpoint nuevo empieza en `openapi.yaml`; avisa al hilo de Front cuando cambie.
 - Entradas validadas con esquema; errores con `throw new AppError(status, code, título)` (`src/http/problem.ts`), con un `code` del enum `ErrorCode` del contrato. Nunca detalles internos al cliente.
+- Permisos: nunca un `if (rol === ...)` en una ruta. La ruta lee el recurso, arma un `Resource` y llama `authorize(requireActor(request), acción, recurso)` (`src/modules/authz/policy.ts`). Un permiso nuevo se agrega a la política y a `test/policy.test.ts`.
 - Tipos de tabla en `src/db.ts` (`Database`), solo de las tablas que el código usa.
 - Migraciones: archivo nuevo `NNNN_descripcion.sql` en `db/migrations/`, re-ejecutable; nunca editar una aplicada.
 - Fechas en UTC en la base y la API; `America/Bogota` solo al mostrar.

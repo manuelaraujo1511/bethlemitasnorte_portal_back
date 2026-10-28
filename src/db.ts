@@ -57,9 +57,57 @@ export interface StudentsTable {
   deleted_at: Date | null;
 }
 
+export interface StaffMembersTable {
+  id: Generated<number>;
+  school_id: number;
+  user_id: number;
+  status: 'active' | 'inactive';
+  deleted_at: Date | null;
+}
+
+export interface AcademicYearsTable {
+  id: Generated<number>;
+  school_id: number;
+  status: 'planned' | 'active' | 'closed';
+}
+
+export interface ClassGroupsTable {
+  id: Generated<number>;
+  school_id: number;
+  academic_year_id: number;
+  director_staff_id: number | null;
+  status: 'active' | 'inactive';
+  deleted_at: Date | null;
+}
+
+export interface TeachingAssignmentsTable {
+  id: Generated<number>;
+  school_id: number;
+  academic_year_id: number;
+  class_group_id: number;
+  subject_id: number;
+  staff_id: number;
+  role: 'titular' | 'reemplazo';
+  /** DATE; se compara en SQL con 'YYYY-MM-DD'. */
+  valid_from: Date | null;
+  valid_to: Date | null;
+  status: 'active' | 'ended';
+  deleted_at: Date | null;
+}
+
+export interface EnrollmentsTable {
+  id: Generated<number>;
+  school_id: number;
+  student_id: number;
+  academic_year_id: number;
+  class_group_id: number;
+  status: 'active' | 'withdrawn' | 'transferred' | 'graduated';
+}
+
 export interface AuthSessionsTable {
   id: Generated<number>;
   user_id: number;
+  school_id: number | null;
   token_hash: Buffer;
   created_at: Generated<Date>;
   last_used_at: Date | null;
@@ -75,6 +123,11 @@ export interface Database {
   user_roles: UserRolesTable;
   students: StudentsTable;
   auth_sessions: AuthSessionsTable;
+  staff_members: StaffMembersTable;
+  academic_years: AcademicYearsTable;
+  class_groups: ClassGroupsTable;
+  teaching_assignments: TeachingAssignmentsTable;
+  enrollments: EnrollmentsTable;
 }
 
 export type Db = Kysely<Database>;

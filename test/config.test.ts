@@ -22,4 +22,16 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/DB_SSL/);
     expect(loadConfig({ ...base, NODE_ENV: 'production', DB_SSL: 'true' }).DB_SSL).toBe(true);
   });
+
+  it('rechaza en producción el SESSION_SECRET de .env.example', () => {
+    const prod = { ...base, NODE_ENV: 'production', DB_SSL: 'true' };
+    expect(() => loadConfig({ ...prod, SESSION_SECRET: 'genera-uno-propio-de-al-menos-32-caracteres' })).toThrow(/SESSION_SECRET/);
+    expect(() => loadConfig(prod)).not.toThrow();
+  });
+
+  it('valida PLATFORM_ADMIN_HOST', () => {
+    expect(loadConfig(base).PLATFORM_ADMIN_HOST).toBeUndefined();
+    expect(loadConfig({ ...base, PLATFORM_ADMIN_HOST: 'admin.campus.localhost' }).PLATFORM_ADMIN_HOST).toBe('admin.campus.localhost');
+    expect(() => loadConfig({ ...base, PLATFORM_ADMIN_HOST: 'Admin.Campus' })).toThrow(/PLATFORM_ADMIN_HOST/);
+  });
 });

@@ -48,6 +48,7 @@ jobs:
       DB_NAME: campus
       LOG_LEVEL: warn
       SESSION_SECRET: ci-only-session-secret-0123456789abcdef
+      PLATFORM_ADMIN_HOST: admin.campus.localhost
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -63,6 +64,8 @@ jobs:
           MYSQL: mysql -h127.0.0.1 -uroot
           MYSQL_PWD: ci-only-root
         run: npm run db:test
+      - name: Pruebas de la API contra la base (test/db)
+        run: DB_INTEGRATION=1 npx vitest run test/db
       - name: /health/ready y login de punta a punta contra la base
         env:
           DEV_PASSWORD: ci-only-dev-password
@@ -73,3 +76,5 @@ jobs:
           curl -sf localhost:3000/health/ready
           npx tsx scripts/smoke-login.ts luis.gomez
           npx tsx scripts/smoke-login.ts 900002
+          SMOKE_HOST=admin.campus.localhost npx tsx scripts/smoke-login.ts soporte.plataforma
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: cualquier.cosa' localhost:3000/api/v1/auth/csrf)" = 404

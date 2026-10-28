@@ -19,6 +19,8 @@ export interface LoginCandidate {
 export interface SessionRecord {
   id: number;
   userId: number;
+  /** Colegio donde se inició; null = host de administración. */
+  schoolId: number | null;
   tokenHash: Buffer;
   createdAt: Date;
   lastUsedAt: Date | null;
@@ -37,14 +39,18 @@ export interface MeRecord {
   roles: { role: Role; coordinatorType: CoordinatorType | null }[];
 }
 
-/** Acceso a datos de autenticación; la implementación real es Kysely, las pruebas usan otra. */
+/**
+ * Acceso a datos de autenticación; la implementación real es Kysely, las pruebas usan otra.
+ * `schoolId: null` significa el host de administración: ahí solo cuenta platform_admin,
+ * y en el host de un colegio solo cuentan los roles de ese colegio.
+ */
 export interface AuthStore {
   schoolByHost(host: string): Promise<School | null>;
-  /** Estudiante por código en el colegio, o personal por usuario con un rol activo ahí (o platform_admin). */
+  /** Estudiante por código en el colegio o personal por usuario con un rol activo ahí; con null, platform_admin. */
   findLoginCandidate(schoolId: number | null, username: string): Promise<LoginCandidate | null>;
   recordLoginFailure(userId: number): Promise<void>;
   recordLoginSuccess(userId: number, now: Date): Promise<void>;
-  createSession(s: { userId: number; tokenHash: Buffer; expiresAt: Date; userAgent: string | null; now: Date }): Promise<void>;
+  createSession(s: { userId: number; schoolId: number | null; tokenHash: Buffer; expiresAt: Date; userAgent: string | null; now: Date }): Promise<void>;
   /** Sesión no revocada con ese hash (vencida o no: lo decide quien llama). */
   findSession(tokenHash: Buffer): Promise<SessionRecord | null>;
   touchSession(id: number, now: Date): Promise<void>;
@@ -62,12 +68,7 @@ export function createKyselyAuthStore(db: Db): AuthStore {
       .select(['role', 'coordinator_type'])
       .where('user_id', '=', userId)
       .where('revoked_at', 'is', null)
-      .where((eb) =>
-        eb.or([
-          eb('role', '=', 'platform_admin'),
-          ...(schoolId === null ? [] : [eb('school_id', '=', schoolId)]),
-        ]),
-      )
+      .where((eb) => (schoolId === null ? eb('role', '=', 'platform_admin') : eb('school_id', '=', schoolId)))
       .orderBy('id');
 
   return {
@@ -108,12 +109,10 @@ export function createKyselyAuthStore(db: Db): AuthStore {
               .select(sql`1`.as('one'))
               .whereRef('r.user_id', '=', 'u.id')
               .where('r.revoked_at', 'is', null)
-              .where('r.role', '<>', 'student')
               .where((e) =>
-                e.or([
-                  e('r.role', '=', 'platform_admin'),
-                  ...(schoolId === null ? [] : [e('r.school_id', '=', schoolId)]),
-                ]),
+                schoolId === null
+                  ? e('r.role', '=', 'platform_admin')
+                  : e.and([e('r.school_id', '=', schoolId), e('r.role', '<>', 'student')]),
               ),
           ),
         )
@@ -144,10 +143,10 @@ export function createKyselyAuthStore(db: Db): AuthStore {
         .execute();
     },
 
-    async createSession({ userId, tokenHash, expiresAt, userAgent, now }) {
+    async createSession({ userId, schoolId, tokenHash, expiresAt, userAgent, now }) {
       await db
         .insertInto('auth_sessions')
-        .values({ user_id: userId, token_hash: tokenHash, expires_at: expiresAt, last_used_at: now, user_agent: userAgent?.slice(0, 255) ?? null })
+        .values({ user_id: userId, school_id: schoolId, token_hash: tokenHash, expires_at: expiresAt, last_used_at: now, user_agent: userAgent?.slice(0, 255) ?? null })
         .execute();
     },
 
@@ -155,7 +154,7 @@ export function createKyselyAuthStore(db: Db): AuthStore {
       const row = await db
         .selectFrom('auth_sessions as s')
         .innerJoin('users as u', 'u.id', 's.user_id')
-        .select(['s.id', 's.user_id', 's.token_hash', 's.created_at', 's.last_used_at', 's.expires_at', 'u.must_change_password'])
+        .select(['s.id', 's.user_id', 's.school_id', 's.token_hash', 's.created_at', 's.last_used_at', 's.expires_at', 'u.must_change_password'])
         .where('s.token_hash', '=', tokenHash)
         .where('s.revoked_at', 'is', null)
         .where('u.status', '=', activeUser.status)
@@ -165,6 +164,7 @@ export function createKyselyAuthStore(db: Db): AuthStore {
         ? {
             id: row.id,
             userId: row.user_id,
+            schoolId: row.school_id,
             tokenHash: row.token_hash,
             createdAt: row.created_at,
             lastUsedAt: row.last_used_at,

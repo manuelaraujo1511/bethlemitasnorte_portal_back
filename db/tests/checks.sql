@@ -1,6 +1,6 @@
 -- =============================================================================
 -- tests/checks.sql  |  pruebas del esquema sobre una base DESCARTABLE
--- Requiere 0001-0004, seed_dev.sql y seed_dev_academic.sql. Lo ejecuta run.sh.
+-- Requiere 0001-0005, seed_dev.sql y seed_dev_academic.sql. Lo ejecuta run.sh.
 -- Cada prueba que falla detiene el script con SIGNAL y un mensaje "FALLA: ...".
 -- Las pruebas negativas ejecutan SQL que la base debe rechazar (CHECK, UNIQUE, FK).
 -- Algunas pruebas positivas insertan filas: no ejecutar sobre una base con datos.
@@ -13,13 +13,14 @@ DROP PROCEDURE IF EXISTS t_eq;
 DROP PROCEDURE IF EXISTS t_rejects;
 
 DELIMITER $$
+-- MESSAGE_TEXT admite hasta 128 caracteres: los mensajes se recortan a eso.
 -- Compara dos valores como texto (NULL solo es igual a NULL).
 CREATE PROCEDURE t_eq(IN label VARCHAR(200), IN actual TEXT, IN expected TEXT)
 BEGIN
-  DECLARE msg VARCHAR(255);
+  DECLARE msg VARCHAR(128);
   IF NOT (actual <=> expected) THEN
     SET msg = LEFT(CONCAT('FALLA: ', label, ' (esperado ', IFNULL(expected, 'NULL'),
-                          ', obtenido ', IFNULL(actual, 'NULL'), ')'), 255);
+                          ', obtenido ', IFNULL(actual, 'NULL'), ')'), 128);
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = msg;
   END IF;
 END$$
@@ -28,7 +29,7 @@ END$$
 CREATE PROCEDURE t_rejects(IN label VARCHAR(200), IN stmt TEXT)
 BEGIN
   DECLARE failed TINYINT DEFAULT 0;
-  DECLARE msg VARCHAR(255);
+  DECLARE msg VARCHAR(128);
   BEGIN
     DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET failed = 1;
     SET @t_stmt = stmt;
@@ -37,7 +38,7 @@ BEGIN
     DEALLOCATE PREPARE t_s;
   END;
   IF failed = 0 THEN
-    SET msg = LEFT(CONCAT('FALLA: la base acepto lo que debia rechazar: ', label), 255);
+    SET msg = LEFT(CONCAT('FALLA: la base acepto lo que debia rechazar: ', label), 128);
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = msg;
   END IF;
 END$$
@@ -46,7 +47,7 @@ DELIMITER ;
 -- ============================== Migraciones ==================================
 CALL t_eq('migraciones registradas',
   (SELECT GROUP_CONCAT(version ORDER BY version) FROM schema_migrations),
-  '0001_core,0002_academic_extras,0003_grading_codocencia,0004_grading_views');
+  '0001_core,0002_academic_extras,0003_grading_codocencia,0004_grading_views,0005_session_school');
 
 -- ============================== Calculo de notas =============================
 -- Ejemplo del dueno: 7 actividades (48,48,34,50,50,50,40) -> 45,7 -> 46.
@@ -166,6 +167,8 @@ CALL t_rejects('asistencia del dia repetida',
   'INSERT INTO attendance_records (enrollment_id, attendance_date, status, recorded_by_user_id) VALUES (1, ''2026-10-19'', ''ausente'', 6)');
 CALL t_rejects('dominio con mayusculas',
   'INSERT INTO school_domains (school_id, host) VALUES (1, ''Portal.Demo.test'')');
+CALL t_rejects('sesion con colegio inexistente',
+  'INSERT INTO auth_sessions (user_id, school_id, token_hash, expires_at) VALUES (2, 999999, UNHEX(SHA2(''x'', 256)), ''2030-01-01'')');
 CALL t_rejects('segunda matricula del mismo anio',
   'INSERT INTO enrollments (school_id, student_id, academic_year_id, class_group_id, enrolled_on) VALUES (1, 1, 1, 5, ''2026-02-01'')');
 

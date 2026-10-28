@@ -3,6 +3,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { AppError } from '../../http/problem.js';
 import { csrfForSession, newToken, safeEqual, sha256, verifyPassword } from './crypto.js';
+import { localDate, type Actor, type ActorStore } from '../authz/actor.js';
 import type { AuthStore, MeRecord, School, SessionRecord } from './store.js';
 
 export const SESSION_COOKIE = '__Host-campus_session';
@@ -16,9 +17,13 @@ const TOUCH_EVERY_MS = 60_000;
 
 export interface AuthOptions {
   store: AuthStore;
+  /** Carga el alcance de quien tiene sesión (B1.3); sin él, request.actor queda en null. */
+  actors?: ActorStore;
   secret: string;
   idleMs: number;
   maxMs: number;
+  /** Host del panel de la plataforma (school = null); solo ahí entra platform_admin. */
+  adminHost?: string | undefined;
   now?: () => Date;
 }
 
@@ -27,6 +32,8 @@ declare module 'fastify' {
     school: School | null;
     session: SessionRecord | null;
     sessionExpired: boolean;
+    /** Roles y alcance de quien tiene sesión, en el colegio del host. */
+    actor: Actor | null;
   }
 }
 
@@ -84,13 +91,14 @@ const invalidCredentials = () => new AppError(401, 'invalid_credentials', 'Usuar
  * encapsular (fastify-plugin), así sus hooks cubren también los módulos hermanos.
  */
 const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
-  const { store, secret, idleMs, maxMs } = opts;
+  const { store, secret, idleMs, maxMs, adminHost } = opts;
   const now = opts.now ?? (() => new Date());
 
   await app.register(cookie);
   app.decorateRequest('school', null);
   app.decorateRequest('session', null);
   app.decorateRequest('sessionExpired', false);
+  app.decorateRequest('actor', null);
 
   const setSessionCookies = (reply: FastifyReply, token: string, tokenHash: Buffer) => {
     reply.setCookie(SESSION_COOKIE, token, { ...cookieBase, httpOnly: true, maxAge: Math.floor(maxMs / 1000) });
@@ -107,13 +115,24 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
   });
 
   app.addHook('onRequest', async (request, reply) => {
-    request.school = await store.schoolByHost(request.hostname.toLowerCase());
+    // El Host decide el colegio (school_domains) o el panel de la plataforma; cualquier
+    // otro host no tiene API. request.hostname sale del Host del cliente (sin trustProxy).
+    const host = request.hostname.toLowerCase();
+    if (adminHost === undefined || host !== adminHost) {
+      request.school = await store.schoolByHost(host);
+      if (!request.school) throw new AppError(404, 'not_found', 'No existe');
+    }
+    const schoolId = request.school?.id ?? null;
 
     const token = request.cookies[SESSION_COOKIE];
     if (token) {
-      const record = await store.findSession(sha256(token));
+      const found = await store.findSession(sha256(token));
+      // Una sesión solo vale en el colegio (o el panel) donde se inició.
+      const record = found && found.schoolId === schoolId ? found : null;
       const t = now().getTime();
-      if (record) {
+      if (found && !record) {
+        request.log.warn({ sessionId: found.id }, 'sesión usada desde otro colegio');
+      } else if (record) {
         const idleSince = (record.lastUsedAt ?? record.createdAt).getTime();
         if (t >= record.expiresAt.getTime() || t - idleSince >= idleMs) {
           await store.revokeSession(record.id, now());
@@ -143,6 +162,10 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
   app.addHook('preHandler', async (request) => {
     if (request.session?.mustChangePassword && !ALLOWED_WHILE_MUST_CHANGE.has(request.routeOptions.url ?? '')) {
       throw new AppError(403, 'password_change_required', 'Debes cambiar tu contraseña antes de seguir');
+    }
+    if (request.session && opts.actors) {
+      const today = localDate(now(), request.school?.timezone ?? 'UTC');
+      request.actor = await opts.actors.loadActor(request.session.userId, request.school?.id ?? null, today);
     }
   });
 
@@ -189,6 +212,7 @@ const auth: FastifyPluginAsync<AuthOptions> = async (app, opts) => {
       const tokenHash = sha256(token);
       await store.createSession({
         userId: candidate.userId,
+        schoolId,
         tokenHash,
         expiresAt: new Date(t.getTime() + maxMs),
         userAgent: request.headers['user-agent'] ?? null,
